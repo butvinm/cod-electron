@@ -1,0 +1,96 @@
+# Cod: rules for every agent
+
+Cod is a desktop workspace for agent-driven development (Electron, Linux first, macOS second). It is a personal tool built in the open by one human stakeholder and a team of agents. Read this file before any task. It overrides your defaults.
+
+## Roles
+
+| Role         | Who                                               | Owns                                                      | Never                                                       |
+| ------------ | ------------------------------------------------- | --------------------------------------------------------- | ----------------------------------------------------------- |
+| Stakeholder  | the human                                         | priorities, acceptance, daily use                         | does QA or debugging for the team                           |
+| PM / Analyst | main Claude Code session                          | backlog, stories, weekly plan, reports to the stakeholder | writes app code or tests; it delegates and only spot-checks |
+| QA           | Codex (`.claude/agents/qa.md`)                    | acceptance tests, test runs, clips, PASS/FAIL verdicts    | edits app code                                              |
+| Developer    | Claude subagent (`.claude/agents/developer.md`)   | implementation of one story per pull request              | weakens, skips or deletes acceptance tests                  |
+| Reviewer     | separate Codex run (`.claude/agents/reviewer.md`) | review of each PR diff against its story                  | edits the branch under review                               |
+
+GitHub Issues and the project board are the shared state. No agent relies on another agent's memory or chat history: everything a task needs is in the issue, the PR or the files named in the handoff.
+
+## Workflow
+
+1. Story issue. The PM writes it with the `write-story` skill: user story, numbered acceptance criteria (AC1, AC2, ...), requirement IDs, out of scope, size. The stakeholder picks stories for the week (`plan-iteration`).
+2. Failing acceptance tests. QA writes end-to-end tests from the criteria (`acceptance-tests`), opens a PR with only tests, and shows they fail for the right reason.
+3. Implementation PR. A developer makes those tests pass test-first (`implement-story`). One story per PR, using the PR template.
+4. Review. A separate Codex run reviews the diff against the story (`review-pr`): approve or request changes with file:line evidence.
+5. CI. All suites green on Linux (macOS when relevant).
+6. Clip. QA records a 30-60 s clip of the changed flow (`record-clip`) and posts PASS/FAIL per criterion on the issue.
+7. Stakeholder acceptance. The PM reports (`report-to-stakeholder`); the stakeholder watches the clip and accepts or rejects. Only then is the issue closed.
+
+Bugs and "Report problem" folders follow `report-problem`: reproduce as a failing test first, then fix through the same flow.
+
+## Handoffs and reports
+
+- Every handoff carries numbered acceptance criteria, the issue number, the files the receiver owns, and the expected hand-back format.
+- Every report is PASS or FAIL per criterion, each with evidence: a test name and its output, a file:line, a commit, a clip or a screenshot path. "It works" without evidence is FAIL.
+- Keep each agent task small: under about 20 minutes, with a checkpoint (commit or comment) at each step. Split bigger work into more tasks.
+- One owner per file at a time. The handoff lists the files the receiver may change; touching others needs a new handoff.
+
+## Definition of done
+
+A story is done when all of these hold:
+
+- every acceptance criterion has a passing automated end-to-end test that drives the real Electron app;
+- the tests were written first and failed before the implementation;
+- the reviewer approved the PR and CI is green;
+- the clip shows the changed flow and passed contact-sheet validation;
+- the PASS/FAIL report is on the issue and the stakeholder accepted it.
+
+## Testing rules
+
+- Playwright for Electron drives the real app. A feature is done when its scenarios pass, not when an agent says it works.
+- Fakes for slow, costly or random parts: a scripted fake agent provider behind the same interface as Claude and Codex, and local look-alike pages for the tracker, wiki and GitLab. Git and language servers run for real on throwaway fixture repos.
+- A small live suite (real agents with cheap models, public gitlab.com) runs on `master` only, on a schedule or by hand, never on PRs from forks.
+- Check the look early: before building a whole feature, get one screen in front of the PM (screenshot or short clip) and compare it to Zed.
+- Codex's sandbox cannot launch Chromium or Electron. Run browser and Electron tests outside the sandbox (see `.claude/agents/qa.md`).
+- On macOS, wrap long jobs in `caffeinate -dimsu <command>`. Before debugging a "hang", check `pmset -g log` for sleep events.
+- Record videos per chapter (one flow per file), and validate them with an ffmpeg contact sheet (`tile=4x4`) before publishing.
+
+## Skills
+
+Procedures live as skills in `.agents/skills/<name>/SKILL.md` (the path Codex scans). `.claude/skills` is a symlink to the same folder, so Claude Code reads the same files. If a tool does not load skills on its own, read the file by path.
+
+| Skill                                                    | Used by   |
+| -------------------------------------------------------- | --------- |
+| `write-story`, `plan-iteration`, `report-to-stakeholder` | PM        |
+| `acceptance-tests`, `record-clip`                        | QA        |
+| `implement-story`                                        | Developer |
+| `review-pr`                                              | Reviewer  |
+| `report-problem`                                         | anyone    |
+
+Role definitions live in `.claude/agents/`. The PM starts the developer as a Claude subagent and QA and the reviewer as Codex runs; each role file explains how.
+
+## Product rules (from the vision)
+
+- Minimal UI, very few settings. Behavior changes by editing code.
+- Everything works from the keyboard, with a command palette.
+- It should look and feel like Zed: fast, quiet, few panels.
+- Small codebase, clear modules, few dependencies, tests for the core.
+
+## Text rules (all files, commits, issues, PRs)
+
+- No em dashes, en dashes, ellipsis characters, curly quotes, unicode arrows or non-breaking spaces. Use " - ", "-", "...", straight quotes and "->".
+- Never break prose lines at a width limit. Break only at the end of a sentence, a list item or a paragraph.
+- Plain language. Short sentences.
+
+## Commit rules
+
+- Never `git add .` or `git add -A`. Stage specific files.
+- Atomic commits: one logical change each, with a clear imperative subject (`Add workspace tab status dot`) and a body when the why is not obvious.
+- No AI attribution trailers (no `Co-Authored-By` for agents, no "Generated with" lines).
+- Branches: `story/<issue>-<slug>`, `tests/<issue>-<slug>`, `fix/<issue>-<slug>`. Never push to `master` directly; merge via PR.
+
+## Public repo rules
+
+This repo is public. Nothing from the stakeholder's employer goes in: no work URLs, internal hostnames, internal product or team names, screenshots or recordings of internal pages, tokens or credentials. This applies to code, fixtures, test pages, recordings, reports, issues and PR text.
+
+- Fixtures use invented data and the local look-alike pages, never captured real pages.
+- Before attaching a screenshot, clip or log, look at it and scrub it. When in doubt, leave it out and describe it in words.
+- Secrets come from environment variables and never get printed in logs or reports.

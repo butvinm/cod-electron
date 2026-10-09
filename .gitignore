@@ -1,0 +1,37 @@
+# Local-only material (preliminary docs, design mockup, agent chat mailbox)
+docs/
+mockup/
+.agent-chat/
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+out/
+release/
+*.tsbuildinfo
+
+# Test and tooling output
+coverage/
+test-results/
+playwright-report/
+blob-report/
+
+# Cod "Report problem" folders and QA artifacts (may contain private data; scrub before publishing)
+reports/
+cod-reports/
+cod-report-*/
+artifacts/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+*.log
+.env
+.env.*
+!.env.example
+
+# Personal Claude Code settings
+.claude/settings.local.json
+CLAUDE.local.md
