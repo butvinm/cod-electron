@@ -92,7 +92,7 @@
 .chat-tool-chevron::before { content: "\25B8"; }
 .chat-tool-summary[aria-expanded="true"] .chat-tool-chevron::before { content: "\25BE"; }
 
-.chat-tool-name { flex: none; color: var(--text); }
+.chat-tool-name { flex: none; margin-right: 6px; color: var(--text); }
 
 .chat-tool-target {
   min-width: 0;
