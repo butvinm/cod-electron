@@ -87,7 +87,7 @@ Role definitions live in `.claude/agents/`. The PM starts the developer as a Cla
 
 ## Text rules (all files, commits, issues, PRs)
 
-- No em dashes, en dashes, ellipsis characters, curly quotes, unicode arrows or non-breaking spaces. Use " - ", "-", "...", straight quotes and "->".
+- No em dashes, en dashes, ellipsis characters, curly quotes, unicode arrows or non-breaking spaces. Use " - ", "-", "...", straight quotes and "->". Exception: upstream files pinned byte for byte as test fixtures (for example Zed's keymaps and settings under `tests/fixtures/`) stay verbatim.
 - Never break prose lines at a width limit. Break only at the end of a sentence, a list item or a paragraph.
 - Plain language. Short sentences.
 

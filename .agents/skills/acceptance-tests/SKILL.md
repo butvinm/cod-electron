@@ -22,7 +22,8 @@ Output: a tests-only branch `tests/<issue>-<slug>` with one test per acceptance 
 
 1. Read the issue: `gh issue view <issue>`. List the criteria AC1...ACn. If a criterion cannot be tested as written, stop and send it back to the PM with a proposed rewording.
 2. Create the branch: `git switch -c tests/<issue>-<slug> master`.
-3. Add or extend fixtures: fixture repo builders in `tests/fixtures/`, fake agent scripts in `tests/fakes/agents/`, look-alike pages in `tests/fakes/sites/`. Invented data only.
+3. Add or extend fixtures: fixture repo builders in `tests/fixtures/`, fake agent scripts in `tests/fakes/agents/`, look-alike pages in `tests/fakes/sites/`. Invented data only. When the story copies Zed behavior, pin the upstream source you rely on (keymap, settings, theme) under `tests/fixtures/` byte for byte, with its URL and commit, instead of guessing.
+   Write the developer contract (test hooks, `data-testid` list, chosen keys) in its own file `tests/e2e/contracts/<issue>-<slug>.md`, never in a shared file, so parallel test branches do not conflict.
 4. Write one test per criterion. Commit after every one or two tests (`Add failing test for #<issue> AC1`).
 5. Run the new tests (outside Codex's sandbox, see `qa.md`; on macOS wrap in `caffeinate -dimsu`):
 

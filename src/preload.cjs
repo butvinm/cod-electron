@@ -11,6 +11,7 @@ const keys = {
   KeyQ: { shift: true, alt: true, action: 'close' },
   KeyB: { shift: false, alt: false, action: 'toggle-panel' },
   KeyE: { shift: true, alt: false, action: 'focus-panel' },
+  KeyP: { shift: false, alt: false, action: 'file-finder' },
 };
 
 const mac = process.platform === 'darwin';
@@ -37,6 +38,15 @@ contextBridge.exposeInMainWorld('cod', {
     listener = callback;
     while (queue.length) callback(queue.shift());
   },
+  // Narrow chat API. The Claude process lives in the main process.
+  chat: {
+    info: workspaceId => ipcRenderer.invoke('chat:info', workspaceId),
+    send: (workspaceId, text) => ipcRenderer.invoke('chat:send', workspaceId, text),
+    interrupt: workspaceId => ipcRenderer.invoke('chat:interrupt', workspaceId),
+    onEvent(callback) {
+      ipcRenderer.on('chat:event', (_event, payload) => callback(payload.workspaceId, payload.event));
+    },
+  },
   // Narrow folder API. The main process owns the folder model and all file system access.
   project: {
     roots: workspaceId => ipcRenderer.invoke('project:roots', workspaceId),
@@ -44,6 +54,11 @@ contextBridge.exposeInMainWorld('cod', {
     forget: workspaceId => ipcRenderer.invoke('project:forget', workspaceId),
     readDir: dir => ipcRenderer.invoke('project:read-dir', dir),
     openFile: (workspaceId, file) => ipcRenderer.invoke('project:open-file', workspaceId, file),
+    finderPrepare: workspaceId => ipcRenderer.invoke('finder:prepare', workspaceId),
+    finderQuery: (workspaceId, text) => ipcRenderer.invoke('finder:query', workspaceId, text),
+    onFinderRebuilt(callback) {
+      ipcRenderer.on('finder:rebuilt', (_event, workspaceId) => callback(workspaceId));
+    },
     onRootsChanged(callback) {
       ipcRenderer.on('project:roots-changed', (_event, payload) => callback(payload));
     },

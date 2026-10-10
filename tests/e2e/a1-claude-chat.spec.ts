@@ -1,7 +1,7 @@
-import { mkdtempSync, mkdirSync, readFileSync, existsSync, writeFileSync, rmSync } from 'node:fs';
+import { cpSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, existsSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir, homedir } from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import type { Page } from '@playwright/test';
 import { test as base, expect, root } from './helpers/electron';
 import { newWorkspaceKey, keys, toPlaywright } from './helpers/zed-keymaps';
@@ -10,21 +10,24 @@ const binary = path.join(root, 'tests/fakes/claude/claude');
 const streamingFlags = ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--include-partial-messages'];
 const credentialName = /^(?:ANTHROPIC_.*(?:KEY|TOKEN|SECRET)|CLAUDE_.*(?:KEY|TOKEN|SECRET))$/i;
 type RecordLine = { kind: string; type?: string; pid: number; argv?: string[]; envNames?: string[]; cwd?: string; line?: string; session_id?: string; history?: unknown[] };
-type Fake = { directory: string; log: string; gates: string; records: () => RecordLine[] };
+type Fake = { directory: string; log: string; gates: string; folders: string[]; records: () => RecordLine[] };
 // Automatic fixtures run before the harness launches Electron. Restore the worker's
 // environment after every test; the shared harness still owns app/profile cleanup.
-const test = base.extend<{ fake: Fake; scenario: string }>({
+const test = base.extend<{ fake: Fake; scenario: string; firstFolder: boolean }>({
   scenario: ['reply', { option: true }],
-  fake: [async ({ scenario }, use) => {
-    const directory = mkdtempSync(path.join(tmpdir(), 'cod-story-8-'));
+  firstFolder: [false, { option: true }],
+  fake: [async ({ scenario, firstFolder }, use) => {
+    const directory = realpathSync(mkdtempSync(path.join(tmpdir(), 'cod-story-8-')));
     const log = path.join(directory, 'claude.jsonl');
     const gates = path.join(directory, 'gates');
     mkdirSync(gates);
+    const folders = firstFolder ? ['orchard', 'harbor'].map(name => path.join(directory, name)) : [];
     const overrides: Record<string, string | undefined> = {
       COD_CLAUDE_BIN: scenario === 'missing' ? path.join(directory, 'missing-claude') : binary,
       COD_FAKE_CLAUDE_LOG: log,
       COD_FAKE_CLAUDE_GATES: gates,
       COD_FAKE_CLAUDE_SCENARIO: scenario === 'missing' ? 'reply' : scenario,
+      COD_TEST_PICK_FOLDERS: firstFolder ? JSON.stringify(folders.map(folder => [folder])) : undefined,
     };
     // Never expose credentials from the operator's shell to this suite.
     for (const name of Object.keys(process.env)) if (credentialName.test(name)) overrides[name] = undefined;
@@ -36,7 +39,13 @@ const test = base.extend<{ fake: Fake; scenario: string }>({
       if (value === undefined) delete process.env[name]; else process.env[name] = value;
     }
     const records = () => existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line) as RecordLine) : [];
-    try { await use({ directory, log, gates, records }); }
+    try {
+      for (const folder of folders) {
+        cpSync(path.join(root, 'tests/fixtures/projects', path.basename(folder)), folder, { recursive: true });
+        execFileSync('git', ['init', '--quiet', '--initial-branch=main', folder]);
+      }
+      await use({ directory, log, gates, folders, records });
+    }
     finally {
       for (const [name, value] of previous) { if (value === undefined) delete process.env[name]; else process.env[name] = value; }
       rmSync(directory, { recursive: true, force: true });
@@ -141,10 +150,46 @@ test.describe('AC3', () => {
     expect(starts[1].argv).toEqual(expect.arrayContaining(['--resume', session]));
     expect(fake.records().filter(record => record.kind === 'turn').map(record => record.session_id)).toEqual([session, session]);
   });
+
+  test('AC3: Escape from the project panel interrupts the reply and resumes the same session', async ({ cod: { page }, fake }) => {
+    await requireChat(page);
+    await send(page, 'Start a long reply');
+    await expect(replies(page).last()).toHaveText('Still working');
+    await expect(replies(page).last()).toHaveAttribute('data-state', 'streaming');
+    const session = (await chat(page).getByTestId('chat-session-id').innerText()).trim();
+    const start = fake.records().find(record => record.kind === 'start')!;
+    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+    await page.keyboard.press(`${modifier}+Shift+e`);
+    const panel = page.getByTestId('project-panel');
+    await expect(panel).toBeVisible();
+    await expect.poll(() => panel.evaluate(node => node === document.activeElement || node.contains(document.activeElement)), {
+      message: 'Story #4 focus shortcut must move focus into the project panel before Escape',
+    }).toBe(true);
+    await expect(composer(page)).not.toBeFocused();
+    await expect(replies(page).last()).toHaveAttribute('data-state', 'streaming');
+    await page.keyboard.press('Escape');
+    await expect(replies(page).last()).toHaveAttribute('data-state', 'interrupted');
+    await expect(chat(page).getByTestId('chat-interrupted')).toHaveText(/interrupted/i);
+    await expect.poll(() => { try { process.kill(start.pid, 0); return false; } catch { return true; } }, {
+      message: 'Escape from the project panel must stop the fake CLI',
+    }).toBe(true);
+    await send(page, 'Continue after interrupt');
+    await expect(replies(page)).toHaveCount(2);
+    await expect(replies(page).first()).toHaveAttribute('data-state', 'interrupted');
+    await expect(replies(page).last()).toHaveText('Continuing the same conversation.');
+    await expect(replies(page).last()).toHaveAttribute('data-state', 'complete');
+    await expect(chat(page).getByTestId('chat-session-id')).toHaveText(session);
+    const starts = fake.records().filter(record => record.kind === 'start');
+    expect(starts).toHaveLength(2);
+    expect(starts[1].pid).not.toBe(starts[0].pid);
+    expect(starts[1].argv!.slice(starts[1].argv!.indexOf('--resume'), starts[1].argv!.indexOf('--resume') + 2)).toEqual(['--resume', session]);
+    const turns = fake.records().filter(record => record.kind === 'turn');
+    expect(turns.map(record => record.session_id)).toEqual([session, session]);
+    expect(turns[1].history).toEqual(['Start a long reply', 'Continue after interrupt']);
+  });
 });
 
-test('AC4: no-folder chat runs Claude in the user home and explains the working directory', async ({ cod: { page }, fake }, testInfo) => {
-  testInfo.annotations.push({ type: 'dependency', description: 'First-folder case blocked by story #4: no COD_TEST_PICK_FOLDERS contract is present in this checkout. No substitute app-state injection.' });
+test('AC4: no-folder chat runs Claude in the user home and explains the working directory', async ({ cod: { page }, fake }) => {
   await requireChat(page);
   await expect(chat(page).getByTestId('chat-working-directory')).toContainText(homedir());
   await expect(chat(page).getByTestId('chat-working-directory')).toContainText(/home/i);
@@ -153,6 +198,70 @@ test('AC4: no-folder chat runs Claude in the user home and explains the working 
   const starts = fake.records().filter(record => record.kind === 'start');
   expect(starts).toHaveLength(1);
   expect(starts[0].cwd).toBe(homedir());
+});
+
+test.describe('AC4 first folder', () => {
+  test.use({ firstFolder: true });
+
+  test('AC4: adding the first folder after a home turn resumes the session in that folder', async ({ cod: { page }, fake }) => {
+    await requireChat(page);
+    await expect(chat(page).getByTestId('chat-working-directory')).toContainText(homedir());
+    await expect(chat(page).getByTestId('chat-working-directory')).toContainText(/home/i);
+    await send(page, 'Remember the first message');
+    await expect(replies(page).last()).toHaveText('Hello from fake Claude.');
+    await expect(replies(page).last()).toHaveAttribute('data-state', 'complete');
+    const session = (await chat(page).getByTestId('chat-session-id').innerText()).trim();
+    const initialStarts = fake.records().filter(record => record.kind === 'start');
+    expect(initialStarts).toHaveLength(1);
+    expect(initialStarts[0].cwd).toBe(homedir());
+    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+    await page.keyboard.press(`${modifier}+Shift+e`);
+    const panel = page.getByTestId('project-panel');
+    await expect(panel).toBeVisible();
+    await expect(panel.getByTestId('project-root')).toHaveCount(0);
+    await panel.getByTestId('project-add-folder').focus();
+    await page.keyboard.press('Enter');
+    await expect(panel.getByTestId('project-root')).toHaveCount(1);
+    await expect(panel.getByTestId('project-root')).toHaveAttribute('data-path', fake.folders[0]);
+    await expect(chat(page).getByTestId('chat-working-directory')).toContainText(fake.folders[0]);
+    await send(page, 'Continue in the new folder');
+    await expect(replies(page)).toHaveCount(2);
+    await expect(replies(page).last()).toHaveText('I remember the first message.');
+    await expect(replies(page).last()).toHaveAttribute('data-state', 'complete');
+    await expect(chat(page).getByTestId('chat-session-id')).toHaveText(session);
+    await expect(chat(page).getByTestId('chat-working-directory')).toContainText(fake.folders[0]);
+    const starts = fake.records().filter(record => record.kind === 'start');
+    expect(starts).toHaveLength(2);
+    expect(starts[1].pid).not.toBe(starts[0].pid);
+    expect(starts[1].cwd).toBe(fake.folders[0]);
+    expect(starts[1].argv!.slice(starts[1].argv!.indexOf('--resume'), starts[1].argv!.indexOf('--resume') + 2)).toEqual(['--resume', session]);
+    const turns = fake.records().filter(record => record.kind === 'turn');
+    expect(turns.map(record => record.session_id)).toEqual([session, session]);
+    expect(turns[1].history).toEqual(['Remember the first message', 'Continue in the new folder']);
+  });
+
+  test('AC4: with two workspace folders Claude runs in the first folder and shows it', async ({ cod: { page }, fake }) => {
+    await requireChat(page);
+    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+    await page.keyboard.press(`${modifier}+Shift+e`);
+    const panel = page.getByTestId('project-panel');
+    await expect(panel).toBeVisible();
+    await expect(panel.getByTestId('project-root')).toHaveCount(0);
+    for (const [index, folder] of fake.folders.entries()) {
+      const add = panel.getByTestId('project-add-folder');
+      await add.focus();
+      await page.keyboard.press('Enter');
+      await expect(panel.getByTestId('project-root')).toHaveCount(index + 1);
+      await expect(panel.getByTestId('project-root').nth(index)).toHaveAttribute('data-path', folder);
+    }
+    await expect(chat(page).getByTestId('chat-working-directory')).toContainText(fake.folders[0]);
+    await expect(chat(page).getByTestId('chat-working-directory')).not.toContainText(fake.folders[1]);
+    await send(page, 'Which folder are we working in?');
+    await expect(replies(page).last()).toHaveText('Hello from fake Claude.');
+    const starts = fake.records().filter(record => record.kind === 'start');
+    expect(starts).toHaveLength(1);
+    expect(starts[0].cwd).toBe(fake.folders[0]);
+  });
 });
 
 for (const scenario of ['reply', 'missing', 'not-logged-in']) test.describe(`AC5 ${scenario}`, () => {
