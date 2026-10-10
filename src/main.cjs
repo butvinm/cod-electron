@@ -6,6 +6,9 @@ if (process.env.COD_USER_DATA_DIR) {
   app.setPath('userData', process.env.COD_USER_DATA_DIR);
 }
 
+// Software rendering starts faster on machines without a GPU, such as the Xvfb CI runner.
+if (process.platform === 'linux') app.disableHardwareAcceleration();
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1100,
