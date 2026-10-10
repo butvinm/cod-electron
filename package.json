@@ -5,7 +5,8 @@
   "main": "src/main.cjs",
   "scripts": {
     "start": "electron .",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test": "node --test tests/unit/*.test.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.56.1",
