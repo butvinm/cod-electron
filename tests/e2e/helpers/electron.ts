@@ -29,6 +29,9 @@ export const test = base.extend<{ cod: Cod }>({
       });
       const page = await app.firstWindow({ timeout: 15_000 });
       try {
+        await page.waitForLoadState('load');
+        await expect(page.getByTestId('workspace-tab')).toHaveCount(1);
+        await expect(page.getByTestId('workspace-tab')).toBeVisible();
         await use({ app, page, startedAt });
       } finally {
         if (testInfo.status !== testInfo.expectedStatus && !page.isClosed()) {
