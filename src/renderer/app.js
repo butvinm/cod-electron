@@ -174,8 +174,8 @@ function render() {
   // Focus goes where it was, or to the panel when asked, otherwise to the active tab.
   // While the finder is open it keeps focus, whatever redraws underneath.
   if (finder.isOpen()) finder.focus();
-  else if (chatFocus) chatFocus.focus({ preventScroll: true });
   else if (panel && focusPanelNext) panel.focus({ preventScroll: true });
+  else if (chatFocus) chatFocus.focus({ preventScroll: true });
   else if (panel && addHadFocus) panel.querySelector('.project-add').focus({ preventScroll: true });
   else if (panel && panelHadFocus) panel.focus({ preventScroll: true });
   else (plusHadFocus ? plus : active).focus({ preventScroll: true });
