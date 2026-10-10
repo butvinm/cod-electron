@@ -73,7 +73,12 @@ class EditorFiles {
     let fd = null;
     try {
       fd = this.fs.openSync(temp, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | (fs.constants.O_NOFOLLOW || 0), 0o600);
-      this.fs.writeSync(fd, bytes);
+      // writeSync may write fewer bytes than asked, so loop until all are out. No progress is an error.
+      for (let done = 0; done < bytes.length;) {
+        const n = this.fs.writeSync(fd, bytes, done, bytes.length - done);
+        if (!(n > 0)) throw new Error('Could not write the whole file');
+        done += n;
+      }
       this.fs.fchmodSync(fd, mode);
       this.fs.fsyncSync(fd);
       this.fs.closeSync(fd);

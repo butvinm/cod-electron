@@ -108,6 +108,36 @@ test('a failed write keeps the original bytes and leaves no temp file', () => {
   cleanup(s);
 });
 
+test('a short write followed by a failure keeps the original bytes and leaves no temp file', () => {
+  let calls = 0;
+  const flaky = {
+    ...fs,
+    writeSync(fd, buffer, offset, length) {
+      calls += 1;
+      if (calls > 1) throw new Error('No space left on device');
+      return fs.writeSync(fd, buffer, offset, Math.min(2, length));
+    },
+  };
+  const s = setup({ fsImpl: flaky });
+  assert.throws(() => s.files.write('ws-1', s.file, plain('new text')), /No space/);
+  assert.equal(fs.readFileSync(s.file, 'utf8'), 'hello\n');
+  assert.deepEqual(fs.readdirSync(s.root).sort(), ['a.txt', 'link.txt']);
+  cleanup(s);
+});
+
+test('short writes are completed, and zero progress is an error', () => {
+  const slow = { ...fs, writeSync: (fd, buffer, offset, length) => fs.writeSync(fd, buffer, offset, Math.min(3, length)) };
+  const s = setup({ fsImpl: slow });
+  s.files.write('ws-1', s.file, plain('a longer text than three bytes'));
+  assert.equal(fs.readFileSync(s.file, 'utf8'), 'a longer text than three bytes');
+  cleanup(s);
+  const stuck = setup({ fsImpl: { ...fs, writeSync: () => 0 } });
+  assert.throws(() => stuck.files.write('ws-1', stuck.file, plain('x')), /whole file/);
+  assert.equal(fs.readFileSync(stuck.file, 'utf8'), 'hello\n');
+  assert.deepEqual(fs.readdirSync(stuck.root).sort(), ['a.txt', 'link.txt']);
+  cleanup(stuck);
+});
+
 test('a failed rename keeps the original bytes and leaves no temp file', () => {
   const failing = { ...fs, renameSync() { throw new Error('rename failed'); } };
   const s = setup({ fsImpl: failing });
