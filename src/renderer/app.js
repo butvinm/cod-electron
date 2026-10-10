@@ -197,7 +197,24 @@ function focusPanel() {
   render();
 }
 
+// The finder sits outside the DOM that render() rebuilds.
+// If the control that had focus was replaced meanwhile, find its successor by test id, else fall back to the active tab.
+const finder = FileFinder.create({
+  container: document.getElementById('finder-root'),
+  workspaceId: () => state.activeId,
+  openFile,
+  restoreFocus(previous) {
+    let target = previous;
+    if (!target || !target.isConnected) {
+      const testid = previous?.dataset?.testid;
+      target = (testid && root.querySelector(`[data-testid="${testid}"]`)) || root.querySelector('[role="tab"][aria-selected="true"]');
+    }
+    target?.focus({ preventScroll: true });
+  },
+});
+
 const actions = {
+  'file-finder': () => finder.toggle(),
   add: () => update(add(state)),
   next: () => update(step(state, 1)),
   previous: () => update(step(state, -1)),
