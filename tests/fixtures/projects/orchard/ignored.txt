@@ -1,0 +1,1 @@
+An ignored file that remains visible with Zed's default project panel settings.
