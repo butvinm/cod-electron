@@ -42,7 +42,8 @@ function childEnv(source) {
 const INTERRUPT_GRACE_MS = 1500;
 const ARRIVAL_WINDOW_MS = 30;
 
-function createClaudeProvider({ bin = process.env.COD_CLAUDE_BIN || 'claude', env = process.env, graceMs = INTERRUPT_GRACE_MS } = {}) {
+function createClaudeProvider({ bin = process.env.COD_CLAUDE_BIN || 'claude', env = process.env, graceMs = INTERRUPT_GRACE_MS, onArrival = () => {} } = {}) {
+  // onArrival({ id, rpcId }) is called when a permission request reaches the server, before it is shown. Tests use it.
   // Permission requests arrive through a small local MCP server (see permission-host.cjs).
   const host = createPermissionHost();
 
@@ -61,6 +62,7 @@ function createClaudeProvider({ bin = process.env.COD_CLAUDE_BIN || 'claude', en
       // Concurrent calls can reach the server out of order. Requests that arrive within a
       // few milliseconds are shown in the order Claude made them (JSON-RPC ids increase).
       arrivals.push({ id, rpcId: request.rpcId, tool: request.tool_name, input: request.input });
+      onArrival({ id, rpcId: request.rpcId });
       if (!flushTimer) flushTimer = setTimeout(flushArrivals, ARRIVAL_WINDOW_MS);
     }));
     let flushTimer = null;
