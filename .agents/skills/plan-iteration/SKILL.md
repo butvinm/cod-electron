@@ -35,11 +35,13 @@ Waiting for acceptance: #<n>, ...
 
 A meeting happens when the stakeholder opens the PM session, at most once a day unless they ask for more. Keep it under about 15 minutes. Agenda:
 
+0. Previous obligations: read the last minutes in `docs/meetings/` and mark each obligation met or missed, with evidence. A missed one gets a reason and a new date.
 1. Demo: for each story that reached "clip PASS" since the last meeting, the `report-to-stakeholder` report. Ask to accept or reject each one.
 2. Accepted: close the issue. Rejected: reopen the work with the stakeholder's words as a new criterion or comment.
 3. Escalations: go through the open `stakeholder` issues. Record each answer on its issue and close it.
 4. Next: show the top of the queue and take the stakeholder's pick, reorder or cuts.
-5. Obligations: state what will be ready for the next meeting. Each one is either delivered then or comes with a written reason and the next step. No "almost done".
+5. Obligations: state what will be ready for the next meeting. Each one is either delivered then or comes with a written reason and the next step. No "almost done". Write each as numbered checks the stakeholder can verify in a few minutes, plus "not included".
+6. Minutes: write `docs/meetings/<YYYY-MM-DD>.md` (sections: previous obligations, decisions D1..., accepted or rejected work, obligations O1..., open questions with defaults) and show it before the meeting ends.
 
 ## Releases
 
