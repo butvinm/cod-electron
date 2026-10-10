@@ -6,6 +6,7 @@ const { readDir } = require('./project-fs.cjs');
 const { FileIndex } = require('./file-index.cjs');
 const { createClaudeProvider } = require('./agents/claude.cjs');
 const { Chats } = require('./agents/chats.cjs');
+const { createQuitGuard } = require('./agents/quit-guard.cjs');
 
 // Must run before the app is ready so no real profile is touched in tests.
 if (process.env.COD_USER_DATA_DIR) {
@@ -119,13 +120,6 @@ function createWindow() {
 app.whenReady().then(createWindow);
 
 // Quitting waits, with a cap, until every Claude process and the tools it started are gone.
-let quitting = false;
-app.on('before-quit', event => {
-  if (quitting) return;
-  quitting = true;
-  event.preventDefault();
-  const cap = new Promise(resolve => setTimeout(resolve, 5000));
-  Promise.race([chats.closeAll(), cap]).finally(() => app.quit());
-});
+app.on('before-quit', createQuitGuard({ cleanup: () => chats.closeAll(), capMs: 5000, quit: () => app.quit() }));
 
 app.on('window-all-closed', () => app.quit());
