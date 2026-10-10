@@ -41,11 +41,25 @@ html, body {
   border-bottom: 1px solid var(--border-variant);
 }
 
+/* Tabs keep a width between 96px and 200px; the strip scrolls when they do not fit. */
+.tabs {
+  display: flex;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar { display: none; }
+
 .tab {
   display: flex;
   align-items: center;
   gap: 6px;
-  min-width: 0;
+  flex: 0 0 auto;
+  width: 160px;
+  min-width: 96px;
+  max-width: 200px;
   padding: 0 8px 0 12px;
   background-color: var(--tab-inactive);
   color: var(--text-muted);
@@ -60,6 +74,10 @@ html, body {
 }
 
 .tab-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: inherit;
   white-space: nowrap;
 }
@@ -79,9 +97,10 @@ button:hover { background-color: var(--hover); color: var(--text); }
 button:active { background-color: var(--active); }
 button:focus-visible, .tab:focus-visible { outline: 1px solid #47679e; outline-offset: -1px; }
 
-.tab-close { width: 18px; height: 18px; line-height: 16px; padding: 0; }
+.tab-close { flex: none; width: 18px; height: 18px; line-height: 16px; padding: 0; }
 
 .add {
+  flex: none;
   align-self: center;
   width: 24px;
   height: 24px;

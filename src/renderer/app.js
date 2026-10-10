@@ -15,7 +15,13 @@ function el(tag, props = {}, ...children) {
 }
 
 function render() {
-  const bar = el('div', { class: 'tab-bar', testid: 'workspace-tab-bar', role: 'tablist' });
+  // Rebuilding the DOM drops focus and scroll, so remember them first.
+  const plusHadFocus = document.activeElement?.dataset?.testid === 'workspace-add';
+  const oldScroller = root.querySelector('.tabs');
+  const scrollLeft = oldScroller ? oldScroller.scrollLeft : 0;
+  const bar = el('div', { class: 'tab-bar', testid: 'workspace-tab-bar' });
+  const tabs = el('div', { class: 'tabs', role: 'tablist' });
+  bar.append(tabs);
   for (const ws of state.workspaces) {
     const selected = ws.id === state.activeId;
     const tab = el('div', {
@@ -33,7 +39,7 @@ function render() {
       event.stopPropagation();
       update(close(state, ws.id));
     });
-    bar.append(tab);
+    tabs.append(tab);
   }
   const plus = el('button', { class: 'add', testid: 'workspace-add', 'aria-label': 'New workspace', title: 'New workspace', text: '+' });
   plus.addEventListener('click', () => update(add(state)));
@@ -41,6 +47,12 @@ function render() {
 
   const area = el('div', { class: 'workspace-area', testid: 'workspace-area', 'data-workspace-id': state.activeId });
   root.replaceChildren(bar, area);
+
+  tabs.scrollLeft = scrollLeft;
+  const active = tabs.querySelector('[aria-selected="true"]');
+  active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  // Keep focus on the plus button if it had it, otherwise on the active tab.
+  (plusHadFocus ? plus : active).focus({ preventScroll: true });
 }
 
 function update(next) {
