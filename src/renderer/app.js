@@ -80,7 +80,6 @@ function projectRow(id, row, selected) {
     testid: 'project-entry',
     'aria-selected': String(row.path === selected),
     'data-path': row.path,
-    style: `padding-left: ${8 + row.depth * 16}px`,
   };
   if (row.isDirectory) props['aria-expanded'] = String(row.expanded);
   const lead = row.isDirectory
@@ -92,6 +91,8 @@ function projectRow(id, row, selected) {
     })
     : el('span', { class: 'project-entry-toggle' });
   const node = el('div', props, lead, el('span', { class: 'project-entry-label', testid: 'project-entry-label', text: row.name }));
+  // Set through the CSSOM, because the CSP blocks inline style attributes.
+  node.style.paddingLeft = `${8 + row.depth * 16}px`;
   node.addEventListener('click', () => clickRow(id, row));
   return node;
 }

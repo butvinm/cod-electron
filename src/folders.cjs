@@ -1,4 +1,18 @@
+const fs = require('node:fs');
 const path = require('node:path');
+
+function realOrNull(target) {
+  if (typeof target !== 'string' || !path.isAbsolute(target)) return null;
+  try { return fs.realpathSync(target); } catch { return null; }
+}
+
+// Exactly ".." or ".." plus a separator escapes; a name like "..cache" does not.
+function isInside(root, target) {
+  const relative = path.relative(root, target);
+  if (relative === '') return true;
+  if (path.isAbsolute(relative)) return false;
+  return relative !== '..' && !relative.startsWith(`..${path.sep}`);
+}
 const { EventEmitter } = require('node:events');
 
 // The one place that knows which folders each workspace holds.
@@ -35,13 +49,15 @@ class Folders extends EventEmitter {
   }
 
   // True when target is a root of any workspace, or inside one.
+  // Both sides go through realpath, so a symlink that leads out of a root does not count.
+  // A path that does not exist is not contained.
   contains(target) {
-    if (!path.isAbsolute(target)) return false;
-    const resolved = path.resolve(target);
+    const real = realOrNull(target);
+    if (real === null) return false;
     for (const roots of this.byWorkspace.values()) {
       for (const root of roots) {
-        const relative = path.relative(root, resolved);
-        if (relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))) return true;
+        const realRoot = realOrNull(root);
+        if (realRoot !== null && isInside(realRoot, real)) return true;
       }
     }
     return false;

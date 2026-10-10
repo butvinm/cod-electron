@@ -9,7 +9,8 @@ const collator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' })
 
 function compare(a, b) {
   if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
-  return collator.compare(a.name, b.name) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+  // Names equal ignoring case: lowercase first, as Zed does.
+  return collator.compare(a.name, b.name) || (a.name > b.name ? -1 : a.name < b.name ? 1 : 0);
 }
 
 // Lists one directory: folders first, then files, hidden scan exclusions left out.

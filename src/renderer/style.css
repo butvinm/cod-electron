@@ -133,6 +133,8 @@ button:focus-visible, .tab:focus-visible { outline: 1px solid #47679e; outline-o
   outline: none;
 }
 
+.project-panel:focus { outline: 1px solid #47679e; outline-offset: -1px; }
+
 .project-header {
   display: flex;
   flex: none;
