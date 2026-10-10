@@ -262,7 +262,7 @@
     }
 
     refreshInfo();
-    return { element, apply, refreshInfo, interrupt, isBusy: () => state.busy, composer };
+    return { element, apply, refreshInfo, interrupt, hasPermission: () => state.permission !== null, isBusy: () => state.busy, composer };
   }
 
   window.Chat = { create };

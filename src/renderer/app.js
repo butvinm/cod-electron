@@ -265,10 +265,19 @@ window.cod.project.onRootsChanged(async ({ workspaceId, roots }) => {
 });
 
 // Esc interrupts the running reply of the active workspace, wherever focus is in it.
-// Overlays come first: while the save prompt or the file finder is open, Esc only closes it.
+// Order: an open permission prompt first (Esc denies), then the save prompt and the file
+// finder (Esc only closes them), then the chat interrupt.
 window.addEventListener('keydown', event => {
-  if (event.key !== 'Escape' || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || editor.promptOpen() || finder.isOpen()) return;
-  if (chats[state.activeId]?.interrupt()) event.preventDefault();
+  if (event.key !== 'Escape' || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+  const chat = chats[state.activeId];
+  if (chat?.hasPermission()) {
+    event.preventDefault();
+    event.stopPropagation();
+    chat.interrupt();
+    return;
+  }
+  if (editor.promptOpen() || finder.isOpen()) return;
+  if (chat?.interrupt()) event.preventDefault();
 }, true);
 
 // Chat events can arrive for any workspace, not only the visible one.
