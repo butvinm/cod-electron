@@ -4,19 +4,19 @@ Cod is a desktop workspace for agent-driven development (Electron, Linux first, 
 
 ## Roles
 
-| Role         | Who                                               | Owns                                                      | Never                                                       |
-| ------------ | ------------------------------------------------- | --------------------------------------------------------- | ----------------------------------------------------------- |
-| Stakeholder  | the human                                         | priorities, acceptance, daily use                         | does QA or debugging for the team                           |
-| PM / Analyst | main Claude Code session                          | backlog, stories, weekly plan, reports to the stakeholder | writes app code or tests; it delegates and only spot-checks |
-| QA           | Codex (`.claude/agents/qa.md`)                    | acceptance tests, test runs, clips, PASS/FAIL verdicts    | edits app code                                              |
-| Developer    | Claude subagent (`.claude/agents/developer.md`)   | implementation of one story per pull request              | weakens, skips or deletes acceptance tests                  |
-| Reviewer     | separate Codex run (`.claude/agents/reviewer.md`) | review of each PR diff against its story                  | edits the branch under review                               |
+| Role         | Who                                               | Owns                                                    | Never                                                       |
+| ------------ | ------------------------------------------------- | ------------------------------------------------------- | ----------------------------------------------------------- |
+| Stakeholder  | the human                                         | priorities, acceptance, daily use                       | does QA or debugging for the team                           |
+| PM / Analyst | main Claude Code session                          | backlog, stories, the queue, reports to the stakeholder | writes app code or tests; it delegates and only spot-checks |
+| QA           | Codex (`.claude/agents/qa.md`)                    | acceptance tests, test runs, clips, PASS/FAIL verdicts  | edits app code                                              |
+| Developer    | Claude subagent (`.claude/agents/developer.md`)   | implementation of one story per pull request            | weakens, skips or deletes acceptance tests                  |
+| Reviewer     | separate Codex run (`.claude/agents/reviewer.md`) | review of each PR diff against its story                | edits the branch under review                               |
 
 GitHub Issues and the project board are the shared state. No agent relies on another agent's memory or chat history: everything a task needs is in the issue, the PR or the files named in the handoff.
 
 ## Workflow
 
-1. Story issue. The PM writes it with the `write-story` skill: user story, numbered acceptance criteria (AC1, AC2, ...), requirement IDs, out of scope, size. The stakeholder picks stories for the week (`plan-iteration`).
+1. Story issue. The PM writes it with the `write-story` skill: user story, numbered acceptance criteria (AC1, AC2, ...), requirement IDs, out of scope, size. It goes into the ranked queue, and the stakeholder picks and reorders at meetings (`plan-iteration`).
 2. Failing acceptance tests. QA writes end-to-end tests from the criteria (`acceptance-tests`), opens a PR with only tests, and shows they fail for the right reason.
 3. Implementation PR. A developer makes those tests pass test-first (`implement-story`). One story per PR, using the PR template.
 4. Review. A separate Codex run reviews the diff against the story (`review-pr`): approve or request changes with file:line evidence.
@@ -25,6 +25,14 @@ GitHub Issues and the project board are the shared state. No agent relies on ano
 7. Stakeholder acceptance. The PM reports (`report-to-stakeholder`); the stakeholder watches the clip and accepts or rejects. Only then is the issue closed.
 
 Bugs and "Report problem" folders follow `report-problem`: reproduce as a failing test first, then fix through the same flow.
+
+## Working with the stakeholder
+
+- The cycle is one day, not a week. Accepted stories merged to `master` are the release; after 0.0.1 each day with accepted stories gets a tag.
+- The stakeholder and the PM meet when the stakeholder opens the PM session, at most once a day by default: demo and accept/reject, escalations, next pick. The agenda is in `plan-iteration`.
+- Between meetings the team works on its own from the ranked queue (a pinned `Queue` issue). The PM decides technical questions and product details that fit `docs/vision.md`.
+- Only these go to the stakeholder, as an issue labeled `stakeholder` with a default answer: a change to the vision or scope, spending money, anything public about the stakeholder or their employer, and anything that cannot be undone. Work continues on everything not blocked.
+- Obligations: whatever the PM says will be ready by the next meeting is either delivered or comes with a written reason and the next step. The stakeholder accepts or rejects at the meeting.
 
 ## Handoffs and reports
 

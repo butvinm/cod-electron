@@ -1,54 +1,63 @@
 ---
 name: plan-iteration
-description: PM procedure for Cod's weekly rhythm. Monday - propose stories and get the stakeholder's pick. During the week - track the board and keep agents unblocked. Friday - a demo from clips. Use at the start of a week, when checking progress, or at the end of a week.
+description: PM procedure for Cod's daily cycle and stakeholder meetings. Keep a ranked queue of ready stories, run the team on its own between meetings, and at each meeting demo what finished, get accept/reject, answer escalations and get the next pick. Use when the stakeholder opens a session, when choosing the next story, or when deciding whether something needs the stakeholder.
 ---
 
-# Plan and run an iteration
+# Plan and run the daily cycle
 
-An iteration is one week. The stakeholder chooses, the PM runs it, the team delivers, Friday shows it.
+An iteration is one day. There are no weekly sprints. The stakeholder meets the PM, the team works on its own until the next meeting, and every accepted story ships the same day.
 
-## Monday: proposal and pick
+## The queue
 
-1. Read the board: `gh issue list --label story --state open --json number,title,labels` and last week's leftovers.
-2. Pick 5-8 candidate stories, ordered by value to daily use. Make sure each has acceptance criteria and a size (otherwise run `write-story` first). Put a "look check" story early if the look of a new area has not been confirmed.
-3. Send the stakeholder a short proposal:
+The queue is a pinned issue titled `Queue`. Its body is the ranked list of story issues, most valuable to daily use first:
 
-   ```
-   Week of <date>. Proposed (most valuable first):
-   1. #<n> <title> (S) - <one plain sentence on why it matters>
-   2. ...
-   Capacity guess: about <k> stories.
-   Please pick, reorder or cut. Questions: <numbered or "none">
-   ```
+```
+Ranked by value to daily use. The team works top down.
+1. #<n> <title> (S) - <one plain sentence on why it matters>
+2. ...
+Waiting for acceptance: #<n>, ...
+```
 
-4. Record the pick: move picked issues to "This week" on the board and add a milestone `week-<YYYY-MM-DD>` (`gh issue edit <n> --milestone <name>`).
+- Keep at least two ready stories (criteria and size set, see `write-story`) at the top, so the team never waits for a meeting.
+- Put a "look check" story early when the look of a new area has not been confirmed.
+- Update it with `gh issue edit <queue> --body-file <file>` whenever the order or state changes.
 
-## During the week: track
+## Between meetings: work alone
 
-For each picked story, drive it through the workflow in `AGENTS.md`: QA tests PR -> developer PR -> reviewer -> CI -> clip. Daily:
-
-1. Check the board and open PRs: `gh pr list`, `gh pr checks <pr>`.
+1. Take the top unstarted story and drive it through the workflow in `AGENTS.md`: QA tests PR -> developer PR -> reviewer -> CI -> clip. Run independent stories in parallel when they own different files.
 2. Keep each agent task under about 20 minutes with a checkpoint. If a task runs long, stop it, read its last checkpoint and split the rest.
 3. Keep one owner per file: before a handoff, check no other open task owns the same files.
 4. Spot-check, do not redo: open one test and one diff per story and compare them with the criteria.
-5. When blocked on the stakeholder, batch questions into one short message instead of asking one at a time.
+5. Decide technical questions and product details that fit `docs/vision.md` yourself. Record the decision in the issue or PR.
+6. Escalate only these, as an issue labeled `stakeholder` with a default ("If I don't hear back, I will ..."): a change to the vision or scope, spending money, anything public about the stakeholder or their employer, and anything that cannot be undone. Then continue with unblocked work.
 
-## Friday: demo
+## Meeting
 
-1. For every story that reached "clip PASS", run `report-to-stakeholder`.
-2. Put the clips in the order of the week's pick into one message: story title, clip link, PASS/FAIL table.
-3. List what did not finish and why, in one line each.
-4. Ask the stakeholder to accept or reject each story. Close accepted issues; move rejected ones back with the stakeholder's words as a new criterion or comment.
-5. Write a three-line retrospective on the milestone: what went well, what hurt, one change for next week.
+A meeting happens when the stakeholder opens the PM session, at most once a day unless they ask for more. Keep it under about 15 minutes. Agenda:
+
+1. Demo: for each story that reached "clip PASS" since the last meeting, the `report-to-stakeholder` report. Ask to accept or reject each one.
+2. Accepted: close the issue. Rejected: reopen the work with the stakeholder's words as a new criterion or comment.
+3. Escalations: go through the open `stakeholder` issues. Record each answer on its issue and close it.
+4. Next: show the top of the queue and take the stakeholder's pick, reorder or cuts.
+5. Obligations: state what will be ready for the next meeting. Each one is either delivered then or comes with a written reason and the next step. No "almost done".
+
+## Releases
+
+Accepted stories merged to `master` are the release. From the first version the stakeholder uses daily (0.0.1) onwards, end each day with accepted stories with a tag `v0.0.<n>` and a release note listing them (`gh release create`).
 
 ## Output format
 
-Monday: the proposal above. Friday:
-
 ```
-Week of <date> demo
+Since last meeting
 | Story | Result | Clip | PR |
 | --- | --- | --- | --- |
 | #<n> <title> | ready for acceptance / not done: <reason> | <link> | <link> |
-Retro: <well> / <hurt> / <change>
+
+Questions (#<issue> each):
+1. <question>? If I don't hear back, I will <default>.
+
+Next (from the queue):
+1. #<n> <title> (S) - <why>
+2. ...
+Ready by next meeting: <stories>. Please pick, reorder or cut.
 ```

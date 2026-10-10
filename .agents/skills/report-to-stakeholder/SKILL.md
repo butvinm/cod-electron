@@ -1,6 +1,6 @@
 ---
 name: report-to-stakeholder
-description: PM procedure to report a finished Cod story (or a week) to the stakeholder as a short PASS/FAIL table with links to the issue, the PR and the clip, plus open questions, in plain language without jargon. Use when a story has a QA verdict and a clip, and for the Friday demo.
+description: PM procedure to report a finished Cod story to the stakeholder as a short PASS/FAIL table with links to the issue, the PR and the clip, plus open questions, in plain language without jargon. Use when a story has a QA verdict and a clip, and for the demo at each stakeholder meeting.
 ---
 
 # Report to the stakeholder
