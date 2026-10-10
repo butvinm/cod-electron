@@ -80,7 +80,20 @@
     }
   }
 
-  const api = { createTabs, open, activate, close, displayPath, moveChoice, errorMessage, attemptSave, confirmOrKeep };
+  // Workspaces whose editors are read-only because a close or quit is under way.
+  function createLocks() {
+    const locked = new Set();
+    return {
+      lock: ids => ids.forEach(id => locked.add(id)),
+      unlock: ids => ids.forEach(id => locked.delete(id)),
+      has: id => locked.has(id),
+    };
+  }
+
+  // A CodeMirror transaction filter: while locked, transactions that change the document are dropped.
+  const editFilter = isLocked => transaction => (transaction.docChanged && isLocked() ? [] : transaction);
+
+  const api = { createTabs, open, activate, close, displayPath, moveChoice, errorMessage, attemptSave, confirmOrKeep, createLocks, editFilter };
   if (typeof module !== 'undefined') module.exports = api;
   else root.EditorTabs = api;
 })(globalThis);

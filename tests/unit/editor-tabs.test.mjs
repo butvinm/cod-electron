@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 
-const { createTabs, open, activate, close, displayPath, moveChoice, errorMessage, attemptSave, confirmOrKeep } = createRequire(import.meta.url)('../../src/renderer/editor-tabs.js');
+const { createTabs, open, activate, close, displayPath, moveChoice, errorMessage, attemptSave, confirmOrKeep, createLocks, editFilter } = createRequire(import.meta.url)('../../src/renderer/editor-tabs.js');
 
 const opened = (...files) => files.reduce(open, createTabs());
 
@@ -92,6 +92,20 @@ test('a confirmation that fails keeps the app open and reports the reason', asyn
   const messages = [];
   assert.equal(await confirmOrKeep(async () => { throw new Error('boom'); }, m => messages.push(m)), false);
   assert.deepEqual(messages, ['Could not check for unsaved files: boom']);
+});
+
+test('a locked workspace drops edits, including to a tab that was clean, and unlocking allows them again', () => {
+  const locks = createLocks();
+  const filter = editFilter(() => locks.has('ws-1'));
+  const edit = { docChanged: true };
+  const move = { docChanged: false };
+  assert.equal(filter(edit), edit);
+  locks.lock(['ws-1', 'ws-2']);
+  assert.deepEqual(filter(edit), []);
+  assert.equal(filter(move), move);
+  locks.unlock(['ws-1']);
+  assert.equal(filter(edit), edit);
+  assert.equal(locks.has('ws-2'), true);
 });
 
 test('only an explicit yes lets the confirmation go on', async () => {

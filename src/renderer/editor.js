@@ -3,7 +3,7 @@
 // The tab list logic is in editor-tabs.js and CodeMirror is behind the CodEditor global (editor-cm.js).
 // A classic script, like the other renderer files.
 const Editor = (function () {
-  const { createTabs, open: openTab, activate: activateTab, close: closeTab, displayPath, moveChoice, errorMessage, attemptSave } = EditorTabs;
+  const { createTabs, open: openTab, activate: activateTab, close: closeTab, displayPath, moveChoice, errorMessage, attemptSave, createLocks, editFilter } = EditorTabs;
   const choices = [
     { id: 'save', label: 'Save' },
     { id: 'discard', label: "Don't Save" },
@@ -57,8 +57,10 @@ const Editor = (function () {
       return spaces.get(id);
     };
 
+    const locks = createLocks();
     const view = CodEditor.create({
       parent: surface,
+      editFilter: editFilter(() => shown !== null && locks.has(shown.workspaceId)),
       onChange(state) {
         if (!shown) return;
         shown.buffer.state = state;
@@ -254,8 +256,21 @@ const Editor = (function () {
     // Resolves true when it is fine to go on: nothing was modified, the user discarded, or every file was saved.
     // On Cancel or a failed save it resolves false. A failure first calls showWorkspace(id) and
     // then activates the failing tab and shows its error, so the user sees what went wrong.
+    // From the first moment until the answer is known, the editors of these workspaces are read-only.
+    // A yes keeps them read-only, because the close or quit completes next. Cancel and failures unlock them.
     async function confirmClose(workspaceIds, showWorkspace) {
       if (prompt || saving) return false;
+      locks.lock(workspaceIds);
+      let ok = false;
+      try {
+        ok = await decideClose(workspaceIds, showWorkspace);
+      } finally {
+        if (!ok) locks.unlock(workspaceIds);
+      }
+      return ok;
+    }
+
+    async function decideClose(workspaceIds, showWorkspace) {
       const entries = [];
       for (const workspaceId of workspaceIds) {
         const s = spaces.get(workspaceId);
@@ -332,6 +347,7 @@ const Editor = (function () {
         if (prompt && workspaceId === current) prompt.close('cancel');
         if (shown && shown.workspaceId === workspaceId) shown = null;
         spaces.delete(workspaceId);
+        locks.unlock([workspaceId]);
         if (workspaceId === current) { current = null; sync(); }
       },
       // The page rebuilds its DOM and moves `element`. Call detach() first; the result restores scroll and focus afterwards.

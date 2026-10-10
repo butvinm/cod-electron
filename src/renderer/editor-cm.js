@@ -132,7 +132,8 @@ const theme = EditorView.theme({
 // The page's CSP allows <style> elements with this nonce, which is how CodeMirror injects its own styles.
 const nonce = EditorView.cspNonce.of('cod-editor');
 
-function create({ parent, onChange }) {
+// editFilter is a transaction filter that drops edits while a close or quit is under way.
+function create({ parent, onChange, editFilter }) {
   const view = new EditorView({ parent, state: EditorState.create({ doc: '', extensions: [nonce] }) });
   return {
     // A fresh buffer for one file. Each tab keeps its own state, so undo history survives tab switches.
@@ -154,6 +155,7 @@ function create({ parent, onChange }) {
           highlighting,
           theme,
           nonce,
+          EditorState.transactionFilter.of(editFilter),
           EditorView.contentAttributes.of({ 'data-testid': 'editor-content', 'aria-label': 'Editor', spellcheck: 'false' }),
           EditorView.updateListener.of(update => { if (update.docChanged) onChange(update.state); }),
         ],
