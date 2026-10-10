@@ -67,14 +67,21 @@
       rows[selected].scrollIntoView({ block: 'nearest' });
     }
 
-    async function runQuery() {
+    // keepPath: after a refresh, keep the same file selected when it is still listed.
+    async function runQuery(keepPath) {
       const mine = ++sequence;
       let found = [];
       try { found = await window.cod.project.finderQuery(id, input.value); } catch (error) { console.error(error); }
       if (mine !== sequence || !overlay) return;
       results = found;
-      selected = 0;
+      selected = Math.max(0, typeof keepPath === 'string' ? found.findIndex(item => item.path === keepPath) : 0);
       drawResults();
+    }
+
+    // The main process rebuilt its file list: ask again so nothing stale stays on screen.
+    function refresh(workspace) {
+      if (!overlay || workspace !== id || input.value === '') return;
+      runQuery(results[selected]?.path);
     }
 
     function choose(index) {
@@ -100,7 +107,7 @@
       input = node('input', { class: 'finder-query', testid: 'file-finder-query', type: 'text', spellcheck: 'false', autocomplete: 'off', 'aria-label': 'Search files', placeholder: 'Search files' });
       list = node('div', { class: 'finder-list', role: 'listbox', 'aria-label': 'Files' });
       overlay = node('div', { class: 'finder', testid: 'file-finder', role: 'dialog', 'aria-label': 'File finder' }, input, list);
-      input.addEventListener('input', runQuery);
+      input.addEventListener('input', () => runQuery());
       overlay.addEventListener('keydown', onKey);
       results = [];
       selected = 0;
@@ -117,7 +124,13 @@
       previousFocus = null;
     }
 
-    return { toggle: () => (overlay ? close() : open()), isOpen: () => overlay !== null };
+    return {
+      toggle: () => (overlay ? close() : open()),
+      close,
+      refresh,
+      focus: () => input?.focus({ preventScroll: true }),
+      isOpen: () => overlay !== null,
+    };
   }
 
   window.FileFinder = { create };

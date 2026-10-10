@@ -36,7 +36,9 @@ function dispatchOpenFile(workspaceId, file) {
   if (log) fs.appendFileSync(log, `${JSON.stringify({ path: file, workspaceId })}\n`);
 }
 
-const fileIndex = new FileIndex(id => folders.list(id));
+const fileIndex = new FileIndex(id => folders.list(id), workspaceId => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('finder:rebuilt', workspaceId);
+});
 
 folders.on('change', payload => {
   fileIndex.reset(payload.workspaceId);

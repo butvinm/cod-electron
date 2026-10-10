@@ -166,7 +166,9 @@ function render() {
     panel.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
   }
   // Focus goes where it was, or to the panel when asked, otherwise to the active tab.
-  if (panel && focusPanelNext) panel.focus({ preventScroll: true });
+  // While the finder is open it keeps focus, whatever redraws underneath.
+  if (finder.isOpen()) finder.focus();
+  else if (panel && focusPanelNext) panel.focus({ preventScroll: true });
   else if (panel && addHadFocus) panel.querySelector('.project-add').focus({ preventScroll: true });
   else if (panel && panelHadFocus) panel.focus({ preventScroll: true });
   else (plusHadFocus ? plus : active).focus({ preventScroll: true });
@@ -175,6 +177,8 @@ function render() {
 
 function update(next) {
   const gone = state.workspaces.filter(w => !next.workspaces.some(n => n.id === w.id));
+  // The finder searches one workspace, so switching or closing one closes it.
+  if (next.activeId !== state.activeId) finder.close();
   state = next;
   for (const ws of gone) {
     delete panels[ws.id];
@@ -212,6 +216,9 @@ const finder = FileFinder.create({
     target?.focus({ preventScroll: true });
   },
 });
+
+// The index finished a rebuild: re-run the current query so results are never stale.
+window.cod.project.onFinderRebuilt(workspaceId => finder.refresh(workspaceId));
 
 const actions = {
   'file-finder': () => finder.toggle(),

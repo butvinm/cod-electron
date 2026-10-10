@@ -47,6 +47,9 @@ contextBridge.exposeInMainWorld('cod', {
     openFile: (workspaceId, file) => ipcRenderer.invoke('project:open-file', workspaceId, file),
     finderPrepare: workspaceId => ipcRenderer.invoke('finder:prepare', workspaceId),
     finderQuery: (workspaceId, text) => ipcRenderer.invoke('finder:query', workspaceId, text),
+    onFinderRebuilt(callback) {
+      ipcRenderer.on('finder:rebuilt', (_event, workspaceId) => callback(workspaceId));
+    },
     onRootsChanged(callback) {
       ipcRenderer.on('project:roots-changed', (_event, payload) => callback(payload));
     },
