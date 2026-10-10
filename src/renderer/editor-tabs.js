@@ -83,10 +83,13 @@
   // Workspaces whose editors are read-only because a close or quit is under way.
   function createLocks() {
     const locked = new Set();
+    let all = false;
     return {
       lock: ids => ids.forEach(id => locked.add(id)),
       unlock: ids => ids.forEach(id => locked.delete(id)),
-      has: id => locked.has(id),
+      // Locks every workspace, now and later. Nothing unlocks it, because the app is on its way out.
+      lockAll() { all = true; },
+      has: id => all || locked.has(id),
     };
   }
 

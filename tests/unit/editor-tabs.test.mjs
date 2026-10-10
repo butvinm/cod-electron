@@ -108,6 +108,14 @@ test('a locked workspace drops edits, including to a tab that was clean, and unl
   assert.equal(locks.has('ws-2'), true);
 });
 
+test('lockAll also covers workspaces that appear later', () => {
+  const locks = createLocks();
+  locks.lockAll();
+  assert.equal(locks.has('ws-new'), true);
+  locks.unlock(['ws-new']);
+  assert.equal(locks.has('ws-new'), true);
+});
+
 test('only an explicit yes lets the confirmation go on', async () => {
   const report = () => assert.fail('no report expected');
   assert.equal(await confirmOrKeep(async () => true, report), true);

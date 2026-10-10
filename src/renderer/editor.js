@@ -142,7 +142,7 @@ const Editor = (function () {
         pending.add(key);
         try {
           const { text, eol, bom } = await window.cod.editor.read(workspaceId, file);
-          const state = view.stateFor(file, text);
+          const state = view.stateFor(file, text, locks.has(workspaceId));
           s.buffers.set(file, { state, saved: state.doc, dirty: false, eol, bom });
         } catch (error) {
           console.error(error);
@@ -256,16 +256,26 @@ const Editor = (function () {
     // Resolves true when it is fine to go on: nothing was modified, the user discarded, or every file was saved.
     // On Cancel or a failed save it resolves false. A failure first calls showWorkspace(id) and
     // then activates the failing tab and shows its error, so the user sees what went wrong.
+    // Makes every open buffer of these workspaces read-only (CodeMirror's own readOnly, so Undo and Redo stop too), or editable again.
+    function setLocked(workspaceIds, locked) {
+      if (locked) locks.lock(workspaceIds); else locks.unlock(workspaceIds);
+      for (const workspaceId of workspaceIds) {
+        for (const buffer of spaces.get(workspaceId)?.buffers.values() ?? []) {
+          buffer.state = shown && shown.buffer === buffer ? view.lockView(locked) : view.lockState(buffer.state, locked);
+        }
+      }
+    }
+
     // From the first moment until the answer is known, the editors of these workspaces are read-only.
     // A yes keeps them read-only, because the close or quit completes next. Cancel and failures unlock them.
     async function confirmClose(workspaceIds, showWorkspace) {
       if (prompt || saving) return false;
-      locks.lock(workspaceIds);
+      setLocked(workspaceIds, true);
       let ok = false;
       try {
         ok = await decideClose(workspaceIds, showWorkspace);
       } finally {
-        if (!ok) locks.unlock(workspaceIds);
+        if (!ok) setLocked(workspaceIds, false);
       }
       return ok;
     }
@@ -332,6 +342,11 @@ const Editor = (function () {
       element,
       confirmClose,
       notify: report,
+      // After a confirmed quit: every editor, including ones opened later, stays read-only until exit.
+      freeze() {
+        locks.lockAll();
+        setLocked([...spaces.keys()], true);
+      },
       open,
       save,
       closeActive() {

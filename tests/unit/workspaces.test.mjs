@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 
-const { createState, add, activate, step, close } = createRequire(import.meta.url)('../../src/renderer/workspaces.js');
+const { createState, freeze, add, activate, step, close } = createRequire(import.meta.url)('../../src/renderer/workspaces.js');
 
 const names = s => s.workspaces.map(w => w.name);
 const activeName = s => s.workspaces.find(w => w.id === s.activeId).name;
@@ -53,4 +53,10 @@ test('closing the last workspace creates a fresh one with a new id', () => {
   const next = close(s, oldId);
   assert.equal(next.workspaces.length, 1);
   assert.notEqual(next.activeId, oldId);
+});
+
+test('after a confirmed quit no workspace can be added', () => {
+  const frozen = freeze(createState());
+  assert.equal(add(frozen), frozen);
+  assert.equal(add(frozen).workspaces.length, 1);
 });

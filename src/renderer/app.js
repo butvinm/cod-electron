@@ -1,4 +1,4 @@
-const { createState, add, activate, step, close } = Workspaces;
+const { createState, freeze, add, activate, step, close } = Workspaces;
 const { visibleRows, navigate, createPanelState } = ProjectTree;
 
 const root = document.getElementById('cod-window');
@@ -221,7 +221,15 @@ async function closeWorkspace(id) {
 const guarded = confirm => EditorTabs.confirmOrKeep(confirm, message => editor.notify(message));
 
 // Quitting asks about the modified files of every workspace before the main process cleans up the chats.
-window.cod.onQuitRequest(() => guarded(() => editor.confirmClose(state.workspaces.map(w => w.id), showWorkspace)));
+// After a yes the editors stay read-only and no workspace can be added until the app exits.
+window.cod.onQuitRequest(async () => {
+  const ok = await guarded(() => editor.confirmClose(state.workspaces.map(w => w.id), showWorkspace));
+  if (ok) {
+    editor.freeze();
+    state = freeze(state);
+  }
+  return ok;
+});
 
 function togglePanel() {
   const ps = panelOf(state.activeId);
