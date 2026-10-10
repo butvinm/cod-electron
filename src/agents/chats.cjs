@@ -2,12 +2,20 @@
 
 const os = require('node:os');
 
+function permissionKey(event) {
+  return JSON.stringify([event.tool, event.input]);
+}
+
 // One chat per workspace. Owns the agent session of each workspace and the choice of
 // working directory. It talks to a provider (see claude.cjs) and reports plain events.
 //
 // A process keeps the directory it started in. When the workspace's first folder changes,
 // the process is ended at a safe point (never in the middle of a turn) and the next message
 // starts a new process that resumes the same session in the new directory.
+//
+// Permission requests ({ type: 'permission-request', id, tool, input }) are shown to the person
+// and answered with answerPermission. "Allow for this session" is remembered here, per chat,
+// for the same tool and the same input, so it works the same for any provider.
 //
 // emit(workspaceId, event) receives every event of every chat.
 class Chats {
@@ -35,7 +43,8 @@ class Chats {
   _chat(workspaceId) {
     let chat = this.chats.get(workspaceId);
     if (!chat) {
-      chat = { session: null, sessionId: null, cwd: null, busy: false };
+      // allowed: requests approved for this session; asked: request id -> key of a request on screen.
+      chat = { session: null, sessionId: null, cwd: null, busy: false, allowed: new Set(), asked: new Map() };
       this.chats.set(workspaceId, chat);
     }
     return chat;
@@ -72,6 +81,13 @@ class Chats {
           if (chat.session !== session && event.type !== 'interrupted') return;
           if (event.type === 'session') chat.sessionId = event.id;
           const current = chat.session === session;
+          if (event.type === 'permission-request') {
+            // A request approved for this session is answered without asking again.
+            const key = permissionKey(event);
+            if (chat.allowed.has(key)) { session.answerPermission(event.id, { allow: true }); return; }
+            chat.asked.set(event.id, key);
+          } else if (event.type === 'permission-clear') chat.asked.delete(event.id);
+          else if (['turn-end', 'error', 'interrupted'].includes(event.type)) chat.asked.clear();
           if (current && (event.type === 'turn-end' || event.type === 'error' || event.type === 'interrupted')) chat.busy = false;
           this.emit(workspaceId, event);
           if (current) this._settle(workspaceId);
@@ -88,6 +104,17 @@ class Chats {
     chat.session.send(text);
   }
 
+  // The answer to a permission request: { allow, message?, scope? }. Scope 'session' remembers
+  // an allow for the same tool and input until the chat is forgotten.
+  answerPermission(workspaceId, id, answer) {
+    const chat = this.chats.get(workspaceId);
+    if (!chat || !chat.session || !chat.asked.has(id)) return;
+    const key = chat.asked.get(id);
+    chat.asked.delete(id);
+    if (answer.allow && answer.scope === 'session') chat.allowed.add(key);
+    chat.session.answerPermission(id, { allow: answer.allow, message: answer.message });
+  }
+
   interrupt(workspaceId) {
     this.chats.get(workspaceId)?.session?.interrupt();
   }
@@ -101,7 +128,8 @@ class Chats {
   // Stops every process, interrupted ones included. Resolves when they are all gone.
   closeAll() {
     this.chats.clear();
-    return Promise.all([...this.live].map(session => session.close()));
+    return Promise.all([...this.live].map(session => session.close()))
+      .then(() => (this.provider.close ? this.provider.close() : undefined));
   }
 }
 

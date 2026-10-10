@@ -39,3 +39,50 @@ Each JSON scenario contains `turns`, each a list of `event`, `gate` or `hold` st
 `start` log records contain argv, cwd and selected environment variable names only, never environment values. The selection covers `ANTHROPIC_*`, `CLAUDE_*`, `COD_*` and `HOME`. `stdin` records contain raw JSON from the invented test messages. Other records track emitted event types, turn history, gates and termination signals. SIGINT exits 130 and SIGTERM exits 143 without a success result. Tests do not require a particular interrupt signal, but require the process to stop.
 
 Logs and state are temporary and removed after each test. Do not point this fake at real messages: its stdin/history log is intentionally readable for QA. AC5 removes shell credential variables before launching Electron and inserts two invented sentinels. Cod must strip those credential variables before spawning the fake. The log checks names, never values. Source review or a separate access audit is still required to prove that Cod never reads or stores login credentials.
+
+## Story #9 permission extension and offline sources
+
+The developer contract is [contracts/9-permissions.md](../../e2e/contracts/9-permissions.md).
+Use COD_FAKE_CLAUDE_SCENARIO=permissions for an invented Bash command that requires approval before the tool_use/tool_result sequence.
+Every turn requests the same tool/input, including a resumed turn; the fake never remembers approval.
+Cod's session host must answer a repeated session-approved request without another visible prompt.
+The existing #8 scenarios and event data are unchanged.
+
+Only the saved official pages in artifacts/9 are used for this extension, with no network lookup:
+
+| Saved page and section | What it establishes |
+| --- | --- |
+| claude-cli-reference.md, "CLI flags", --permission-prompt-tool | An MCP tool handles prompts in non-interactive mode; its server must connect before the first turn |
+| claude-cli-reference.md, "CLI flags", --mcp-config | Load MCP servers from a JSON file or JSON string |
+| claude-headless.md, "Read session metadata" and "Fail CI when a plugin or MCP server doesn't load" | system/init metadata and startup handling of configured MCP servers |
+| claude-headless.md, "Turn off permission prompts in unattended runs" | Default host waits for answers; --permission-prompts none denies instead |
+| claude-permissions.md, "Permission system", "Add a comment when you answer a permission prompt" and "Manage permissions" | Comments accompany allow/deny answers; prompt shows proposed action/options; file modification approval can last until session end; permission rules are enforced by Claude Code |
+| claude-mcp.md, "Option 3: Add a local stdio server", "Add a server from an mcpServers JSON block" and "Project scope" | Local server command/args/env, mcpServers wrapper and HTTP type/url config |
+| claude-mcp.md, "Require approval for a specific tool" | Prompt-tool allow results cannot approve MCP tools marked anthropic/requiresUserInteraction; this script requests built-in Bash, not such a marked MCP tool |
+
+The four saved pages do NOT give an exact permission-tool request/answer schema.
+The following are explicitly inferred, not a documented or captured CLI schema: request `{tool_name, input}`; answer `{behavior: "allow", updatedInput}` or `{behavior: "deny", message}` encoded as JSON in an MCP text content result; tool naming `mcp__<server>__<tool>`; initialize/notifications/initialized/tools/list/tools/call JSON-RPC messages, protocol revision 2024-11-05, client capabilities, newline framing, Streamable HTTP headers, session handling and SSE data parsing.
+The fake accepts the tool's listed local name or resolves a qualified name to that listed tool; exact real CLI name resolution needs confirmation.
+No SDK callback schema or undocumented stdio control messages are claimed to be official CLI permission-tool docs.
+The supplied pages cannot alone establish strict real CLI compatibility for these fields.
+Confirm them through an authorized CLI check before declaring AC5 compatible with real Claude Code.
+
+The MCP client in mcp-client.cjs connects before the first scripted event when both flags are supplied.
+It supports a local stdio child or loopback HTTP, including JSON and SSE responses to HTTP POSTs, but not legacy SSE/WebSocket transport.
+Permission results must contain behavior and the corresponding updatedInput/message.
+It does not execute the scripted shell command.
+A permission scenario without both host flags logs permission-host-missing and holds pending so the UI assertion fails for the missing feature.
+This holding behavior is fake-only, not a claim about real Claude's fallback behavior.
+On deny it emits an invented complete assistant reaction containing the reason and never emits or runs the scripted tool_use.
+The denial prose is synthetic, not a recording of a real model.
+The #8 README's inferred streaming envelopes still apply.
+
+Additional log kinds: mcp-connect (transport and local server identity), permission-request (configured tool, local tool and request), permission-answer (tool, request and decoded answer), permission-host-missing and tool-run (scripted tool/input after allow).
+Session caching, shortcut S, reason UI and status DOM are Cod contracts, not MCP fields.
+Do not add an undocumented "allow for session" property to the MCP answer.
+The log uses tool-run to indicate scripted execution; it is not evidence of actual shell execution.
+The temporary logs use invented fixture inputs and are attached to the Electron results before removal.
+
+`node --test tests/fakes/claude/protocol.test.cjs` checks the fake against a temporary stdio peer, for allow/deny, inline/file configs, unchanged denial reasons and two identical requests.
+It also exercises #8 reply, tools, stream, logged-out and interrupt scenarios without permission flags.
+These checks validate fixture behavior only; they are not Electron acceptance results or an independent official protocol conformance suite.

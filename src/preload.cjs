@@ -51,6 +51,7 @@ contextBridge.exposeInMainWorld('cod', {
     info: workspaceId => ipcRenderer.invoke('chat:info', workspaceId),
     send: (workspaceId, text) => ipcRenderer.invoke('chat:send', workspaceId, text),
     interrupt: workspaceId => ipcRenderer.invoke('chat:interrupt', workspaceId),
+    permission: (workspaceId, id, answer) => ipcRenderer.invoke('chat:permission', workspaceId, id, answer),
     onEvent(callback) {
       ipcRenderer.on('chat:event', (_event, payload) => callback(payload.workspaceId, payload.event));
     },

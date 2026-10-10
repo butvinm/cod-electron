@@ -8,7 +8,24 @@
   'use strict';
 
   function createChat() {
-    return { items: [], busy: false, sessionId: null, nextKey: 1 };
+    return { items: [], busy: false, sessionId: null, permission: null, permissions: [], nextKey: 1 };
+  }
+
+  // permission is always the first waiting request, or null.
+  function withQueue(state, permissions) {
+    return { ...state, permissions, permission: permissions[0] || null };
+  }
+
+  // The session status shown in the chat header.
+  function statusOf(state) {
+    if (state.permission) return 'Needs input';
+    return state.busy ? 'Working' : 'Ready';
+  }
+
+  // The full text of a tool input for the permission prompt: a command as it is, anything else as JSON.
+  function permissionText(input) {
+    if (input && typeof input === 'object' && typeof input.command === 'string') return input.command;
+    return toolInputText(input);
   }
 
   const LOGIN_HELP = 'Claude is not logged in. Run `claude auth login` in a terminal, then send your message again.';
@@ -49,14 +66,20 @@
           ...state,
           items: state.items.map(item => (item.kind === 'tool' && item.toolId === event.id ? { ...item, output: event.output, isError: event.isError } : item)),
         };
+      // Requests wait in order; the first one is shown.
+      case 'permission-request':
+        return withQueue(state, [...state.permissions, { id: event.id, tool: event.tool, input: event.input }]);
+      case 'permission-clear':
+      case 'permission-answered':
+        return withQueue(state, state.permissions.filter(request => request.id !== event.id));
       case 'turn-end':
-        return { ...settle(state, 'complete'), busy: false };
+        return { ...withQueue(settle(state, 'complete'), []), busy: false };
       case 'error': {
         const message = event.kind === 'not-logged-in' ? LOGIN_HELP : event.message;
-        return push(settle(state, 'complete'), { kind: 'error', message }, { busy: false });
+        return push(withQueue(settle(state, 'complete'), []), { kind: 'error', message }, { busy: false });
       }
       case 'interrupted':
-        return push(settle(state, 'interrupted'), { kind: 'interrupted' }, { busy: false });
+        return push(withQueue(settle(state, 'interrupted'), []), { kind: 'interrupted' }, { busy: false });
       default:
         return state;
     }
@@ -93,7 +116,18 @@
     return blocks;
   }
 
-  const api = { createChat, reduce, toolTarget, toolInputText, splitBlocks, LOGIN_HELP };
+  // "1 of 2" while more than one request waits.
+  function queueHint(waiting) {
+    return waiting > 1 ? `1 of ${waiting}` : '';
+  }
+
+  // Where the focus goes when it enters a chat with a waiting prompt.
+  function promptFocusTarget({ denying, choice, count }) {
+    if (denying) return { kind: 'reason' };
+    return { kind: 'choice', index: Math.max(0, Math.min(count - 1, choice || 0)) };
+  }
+
+  const api = { createChat, reduce, queueHint, promptFocusTarget, statusOf, permissionText, toolTarget, toolInputText, splitBlocks, LOGIN_HELP };
   if (typeof window !== 'undefined') window.ChatModel = api;
   if (typeof module !== 'undefined') module.exports = api;
 })();

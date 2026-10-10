@@ -196,7 +196,8 @@ function render() {
 function update(next) {
   const gone = state.workspaces.filter(w => !next.workspaces.some(n => n.id === w.id));
   // The finder searches one workspace, so switching or closing one closes it.
-  if (next.activeId !== state.activeId) finder.close();
+  const switched = next.activeId !== state.activeId;
+  if (switched) finder.close();
   state = next;
   for (const ws of gone) {
     delete panels[ws.id];
@@ -206,6 +207,8 @@ function update(next) {
     window.cod.project.forget(ws.id).catch(console.error);
   }
   render();
+  // Switching to a chat with a waiting permission prompt puts the focus on the prompt.
+  if (switched) chats[state.activeId]?.focusPrompt();
 }
 
 function togglePanel() {
@@ -265,10 +268,19 @@ window.cod.project.onRootsChanged(async ({ workspaceId, roots }) => {
 });
 
 // Esc interrupts the running reply of the active workspace, wherever focus is in it.
-// Overlays come first: while the save prompt or the file finder is open, Esc only closes it.
+// Order: an open permission prompt first (Esc denies), then the save prompt and the file
+// finder (Esc only closes them), then the chat interrupt.
 window.addEventListener('keydown', event => {
-  if (event.key !== 'Escape' || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || editor.promptOpen() || finder.isOpen()) return;
-  if (chats[state.activeId]?.interrupt()) event.preventDefault();
+  if (event.key !== 'Escape' || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+  const chat = chats[state.activeId];
+  if (chat?.hasPermission()) {
+    event.preventDefault();
+    event.stopPropagation();
+    chat.interrupt();
+    return;
+  }
+  if (editor.promptOpen() || finder.isOpen()) return;
+  if (chat?.interrupt()) event.preventDefault();
 }, true);
 
 // Chat events can arrive for any workspace, not only the visible one.
