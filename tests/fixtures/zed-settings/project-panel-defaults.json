@@ -1,0 +1,13 @@
+{
+  "source": "https://raw.githubusercontent.com/zed-industries/zed/v1.23.2/assets/settings/default.json",
+  "project_panel": {
+    "dock": "right",
+    "starts_open": true,
+    "hide_root": false,
+    "hide_hidden": false,
+    "hide_gitignore": false,
+    "sort_mode": "directories_first",
+    "sort_order": "default"
+  },
+  "file_scan_exclusions": ["**/.git", "**/.svn", "**/.hg", "**/.jj", "**/.sl", "**/.repo", "**/CVS", "**/.DS_Store", "**/Thumbs.db", "**/.classpath", "**/.settings"]
+}
