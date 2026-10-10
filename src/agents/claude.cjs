@@ -31,7 +31,9 @@ function childEnv(source) {
   return env;
 }
 
-// How long a process may take to stop after SIGINT before it gets SIGTERM.
+// How long a process may take to stop after each signal before the next, harder one.
+// Shutdown is bounded: SIGINT (interrupt only), SIGTERM, SIGKILL, then the session is
+// declared over even if the operating system never confirms the exit.
 const INTERRUPT_GRACE_MS = 1500;
 
 function createClaudeProvider({ bin = process.env.COD_CLAUDE_BIN || 'claude', env = process.env, graceMs = INTERRUPT_GRACE_MS } = {}) {
@@ -45,7 +47,17 @@ function createClaudeProvider({ bin = process.env.COD_CLAUDE_BIN || 'claude', en
     let errorSeen = false;
     let quiet = false;
     let stderr = '';
-    let graceTimer = null;
+    let timers = [];
+    let finished;
+    const exited = new Promise(resolve => { finished = resolve; });
+
+    // The process runs in its own group, so signals reach the tools it started too.
+    const signalTree = signal => {
+      try {
+        if (process.platform !== 'win32' && child.pid) process.kill(-child.pid, signal);
+        else child.kill(signal);
+      } catch { /* already gone */ }
+    };
 
     const emit = event => {
       if (quiet) return;
@@ -54,7 +66,7 @@ function createClaudeProvider({ bin = process.env.COD_CLAUDE_BIN || 'claude', en
       onEvent(event);
     };
 
-    const child = spawn(bin, args, { cwd, env: childEnv(env), stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(bin, args, { cwd, env: childEnv(env), stdio: ['pipe', 'pipe', 'pipe'], detached: process.platform !== 'win32' });
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
     child.stdout.on('data', chunk => { for (const event of parser.push(chunk)) emit(event); });
@@ -70,24 +82,40 @@ function createClaudeProvider({ bin = process.env.COD_CLAUDE_BIN || 'claude', en
         message: missing ? 'Claude is not installed. Install the claude program and try again.' : `Could not start claude: ${error.message}`,
       });
       onExit();
+      finished();
     });
-    child.on('close', code => {
+
+    // The session is over: nothing it started may outlive it, and the chat always hears about it.
+    function finish(code) {
       if (!alive) return;
       alive = false;
-      clearTimeout(graceTimer);
+      timers.forEach(clearTimeout);
+      signalTree('SIGKILL');
       for (const event of parser.end()) emit(event);
       if (interrupting) {
         onEvent({ type: 'interrupted' });
-      } else if (turnActive && !errorSeen) {
+      } else if (turnActive && !errorSeen && !quiet) {
         const detail = stderr.trim();
         emit({ type: 'error', kind: 'failed', message: `Claude stopped unexpectedly (exit code ${code}).${detail ? `\n${detail}` : ''}` });
       }
       onExit();
-    });
+      finished();
+    }
+    child.on('close', finish);
+    // Tools that outlive the process can hold its pipes open, so do not wait for 'close' alone.
+    child.on('exit', code => { if (alive) timers.push(setTimeout(() => finish(code), 200)); });
+
+    function stop(signals) {
+      timers.forEach(clearTimeout);
+      timers = signals.map((signal, index) => setTimeout(() => signalTree(signal), index * graceMs));
+      timers.push(setTimeout(() => finish(null), signals.length * graceMs));
+    }
 
     return {
       get alive() { return alive; },
       get interrupting() { return interrupting; },
+      // Resolves once the process and everything it started is gone.
+      exited,
       send(text) {
         if (!alive || interrupting) return;
         turnActive = true;
@@ -98,15 +126,15 @@ function createClaudeProvider({ bin = process.env.COD_CLAUDE_BIN || 'claude', en
         interrupting = true;
         // Anything the process still prints for this turn is dropped.
         quiet = true;
-        child.kill('SIGINT');
-        graceTimer = setTimeout(() => { if (alive) child.kill('SIGTERM'); }, graceMs);
+        stop(['SIGINT', 'SIGTERM', 'SIGKILL']);
       },
+      // Stops the process without a visible event. Returns a promise for the exit.
       close() {
-        if (!alive) return;
+        if (!alive) return exited;
         quiet = true;
-        clearTimeout(graceTimer);
         child.stdin.end();
-        child.kill('SIGTERM');
+        stop(['SIGTERM', 'SIGKILL']);
+        return exited;
       },
     };
   }

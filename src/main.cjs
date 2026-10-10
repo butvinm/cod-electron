@@ -53,6 +53,7 @@ const chats = new Chats({
 
 folders.on('change', payload => {
   fileIndex.reset(payload.workspaceId);
+  chats.foldersChanged(payload.workspaceId);
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('project:roots-changed', payload);
 });
 
@@ -117,6 +118,14 @@ function createWindow() {
 
 app.whenReady().then(createWindow);
 
-app.on('before-quit', () => chats.closeAll());
+// Quitting waits, with a cap, until every Claude process and the tools it started are gone.
+let quitting = false;
+app.on('before-quit', event => {
+  if (quitting) return;
+  quitting = true;
+  event.preventDefault();
+  const cap = new Promise(resolve => setTimeout(resolve, 5000));
+  Promise.race([chats.closeAll(), cap]).finally(() => app.quit());
+});
 
 app.on('window-all-closed', () => app.quit());
