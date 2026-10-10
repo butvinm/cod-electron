@@ -12,6 +12,8 @@ const keys = {
   KeyB: { shift: false, alt: false, action: 'toggle-panel' },
   KeyE: { shift: true, alt: false, action: 'focus-panel' },
   KeyP: { shift: false, alt: false, action: 'file-finder' },
+  KeyS: { shift: false, alt: false, action: 'save' },
+  KeyW: { shift: false, alt: false, action: 'close-tab' },
 };
 
 const mac = process.platform === 'darwin';
@@ -37,6 +39,11 @@ contextBridge.exposeInMainWorld('cod', {
   onAction(callback) {
     listener = callback;
     while (queue.length) callback(queue.shift());
+  },
+  // Editor file access. The main process checks every path against the workspace folders.
+  editor: {
+    read: (workspaceId, file) => ipcRenderer.invoke('editor:read', workspaceId, file),
+    write: (workspaceId, file, text) => ipcRenderer.invoke('editor:write', workspaceId, file, text),
   },
   // Narrow folder API. The main process owns the folder model and all file system access.
   project: {

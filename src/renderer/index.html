@@ -2,9 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'nonce-cod-editor'; font-src 'self'; script-src 'self'">
   <title>Cod</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="editor.css">
 </head>
 <body>
   <div id="cod-window" data-testid="cod-window"></div>
@@ -12,6 +13,9 @@
   <script src="workspaces.js"></script>
   <script src="file-finder.js"></script>
   <script src="project-tree.js"></script>
+  <script src="dist/editor-cm.js"></script>
+  <script src="editor-tabs.js"></script>
+  <script src="editor.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

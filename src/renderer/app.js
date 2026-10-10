@@ -10,6 +10,12 @@ const rootsOf = {};    // workspace id -> absolute root paths, mirrored from the
 const listings = {};   // directory path -> [{ name, path, isDirectory }]
 let focusPanelNext = false;
 
+// Editor tabs. When the last tab closes, focus goes back to the active workspace tab.
+const editor = Editor.create({
+  roots: id => rootsOf[id] || [],
+  focusFallback: () => root.querySelector('[data-testid="workspace-tab"][aria-selected="true"]')?.focus({ preventScroll: true }),
+});
+
 const panelOf = id => (panels[id] = panels[id] || createPanelState());
 
 function el(tag, props = {}, ...kids) {
@@ -47,7 +53,7 @@ async function toggleDir(id, dir) {
 }
 
 function openFile(id, file) {
-  window.cod.project.openFile(id, file).catch(console.error);
+  window.cod.project.openFile(id, file).then(() => editor.open(id, file)).catch(console.error);
 }
 
 // A click selects the row, then toggles a folder or opens a file, as in Zed.
@@ -121,6 +127,7 @@ function render() {
   const plusHadFocus = focused?.dataset?.testid === 'workspace-add';
   const addHadFocus = focused?.dataset?.testid === 'project-add-folder';
   const panelHadFocus = focused?.dataset?.testid === 'project-panel';
+  const restoreEditor = editor.detach();
   const oldScroller = root.querySelector('.tabs');
   const scrollLeft = oldScroller ? oldScroller.scrollLeft : 0;
   const oldTree = root.querySelector('.project-tree');
@@ -152,12 +159,15 @@ function render() {
   bar.append(plus);
 
   const area = el('div', { class: 'workspace-area', testid: 'workspace-area', 'data-workspace-id': state.activeId });
+  area.append(editor.element);
+  editor.show(state.activeId);
   const body = el('div', { class: 'workbench' });
   const panel = panelOf(state.activeId).open ? projectPanel(state.activeId) : null;
   if (panel) body.append(panel);
   body.append(area);
   root.replaceChildren(bar, body);
 
+  const editorHadFocus = restoreEditor();
   tabs.scrollLeft = scrollLeft;
   const active = tabs.querySelector('[aria-selected="true"]');
   active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
@@ -169,6 +179,7 @@ function render() {
   // While the finder is open it keeps focus, whatever redraws underneath.
   if (finder.isOpen()) finder.focus();
   else if (panel && focusPanelNext) panel.focus({ preventScroll: true });
+  else if (editorHadFocus) editor.focus();
   else if (panel && addHadFocus) panel.querySelector('.project-add').focus({ preventScroll: true });
   else if (panel && panelHadFocus) panel.focus({ preventScroll: true });
   else (plusHadFocus ? plus : active).focus({ preventScroll: true });
@@ -183,6 +194,7 @@ function update(next) {
   for (const ws of gone) {
     delete panels[ws.id];
     delete rootsOf[ws.id];
+    editor.forget(ws.id);
     window.cod.project.forget(ws.id).catch(console.error);
   }
   render();
@@ -221,6 +233,8 @@ const finder = FileFinder.create({
 window.cod.project.onFinderRebuilt(workspaceId => finder.refresh(workspaceId));
 
 const actions = {
+  save: () => editor.save(),
+  'close-tab': () => editor.closeActive(),
   'file-finder': () => finder.toggle(),
   add: () => update(add(state)),
   next: () => update(step(state, 1)),
