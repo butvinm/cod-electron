@@ -10,6 +10,12 @@ const rootsOf = {};    // workspace id -> absolute root paths, mirrored from the
 const listings = {};   // directory path -> [{ name, path, isDirectory }]
 let focusPanelNext = false;
 
+// Editor tabs. When the last tab closes, focus goes back to the active workspace tab.
+const editor = Editor.create({
+  roots: id => rootsOf[id] || [],
+  focusFallback: () => root.querySelector('[data-testid="workspace-tab"][aria-selected="true"]')?.focus({ preventScroll: true }),
+});
+
 // Each workspace has one chat. Its DOM is kept, so render() only moves it into the new area.
 const chats = {};      // workspace id -> chat view from chat.js
 const chatOf = id => (chats[id] = chats[id] || Chat.create({ workspaceId: id, chatApi: window.cod.chat }));
@@ -51,7 +57,7 @@ async function toggleDir(id, dir) {
 }
 
 function openFile(id, file) {
-  window.cod.project.openFile(id, file).catch(console.error);
+  window.cod.project.openFile(id, file).then(() => editor.open(id, file)).catch(console.error);
 }
 
 // A click selects the row, then toggles a folder or opens a file, as in Zed.
@@ -125,6 +131,7 @@ function render() {
   const plusHadFocus = focused?.dataset?.testid === 'workspace-add';
   const addHadFocus = focused?.dataset?.testid === 'project-add-folder';
   const panelHadFocus = focused?.dataset?.testid === 'project-panel';
+  const restoreEditor = editor.detach();
   const chatFocus = focused && chats[state.activeId]?.element.contains(focused) ? focused : null;
   const oldScroller = root.querySelector('.tabs');
   const scrollLeft = oldScroller ? oldScroller.scrollLeft : 0;
@@ -157,6 +164,8 @@ function render() {
   bar.append(plus);
 
   const area = el('div', { class: 'workspace-area', testid: 'workspace-area', 'data-workspace-id': state.activeId });
+  area.append(editor.element);
+  editor.show(state.activeId);
   area.append(chatOf(state.activeId).element);
   const body = el('div', { class: 'workbench' });
   const panel = panelOf(state.activeId).open ? projectPanel(state.activeId) : null;
@@ -164,6 +173,7 @@ function render() {
   body.append(area);
   root.replaceChildren(bar, body);
 
+  const editorHadFocus = restoreEditor();
   tabs.scrollLeft = scrollLeft;
   const active = tabs.querySelector('[aria-selected="true"]');
   active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
@@ -175,6 +185,7 @@ function render() {
   // While the finder is open it keeps focus, whatever redraws underneath.
   if (finder.isOpen()) finder.focus();
   else if (panel && focusPanelNext) panel.focus({ preventScroll: true });
+  else if (editorHadFocus) editor.focus();
   else if (chatFocus) chatFocus.focus({ preventScroll: true });
   else if (panel && addHadFocus) panel.querySelector('.project-add').focus({ preventScroll: true });
   else if (panel && panelHadFocus) panel.focus({ preventScroll: true });
@@ -190,6 +201,7 @@ function update(next) {
   for (const ws of gone) {
     delete panels[ws.id];
     delete rootsOf[ws.id];
+    editor.forget(ws.id);
     delete chats[ws.id];
     window.cod.project.forget(ws.id).catch(console.error);
   }
@@ -229,6 +241,8 @@ const finder = FileFinder.create({
 window.cod.project.onFinderRebuilt(workspaceId => finder.refresh(workspaceId));
 
 const actions = {
+  save: () => editor.save(),
+  'close-tab': () => editor.closeActive(),
   'file-finder': () => finder.toggle(),
   add: () => update(add(state)),
   next: () => update(step(state, 1)),
@@ -251,9 +265,9 @@ window.cod.project.onRootsChanged(async ({ workspaceId, roots }) => {
 });
 
 // Esc interrupts the running reply of the active workspace, wherever focus is in it.
-// Overlays come first: while the file finder is open, Esc only closes it.
+// Overlays come first: while the save prompt or the file finder is open, Esc only closes it.
 window.addEventListener('keydown', event => {
-  if (event.key !== 'Escape' || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || finder.isOpen()) return;
+  if (event.key !== 'Escape' || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || editor.promptOpen() || finder.isOpen()) return;
   if (chats[state.activeId]?.interrupt()) event.preventDefault();
 }, true);
 

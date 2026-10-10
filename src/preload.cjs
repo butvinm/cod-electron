@@ -12,6 +12,8 @@ const keys = {
   KeyB: { shift: false, alt: false, action: 'toggle-panel' },
   KeyE: { shift: true, alt: false, action: 'focus-panel' },
   KeyP: { shift: false, alt: false, action: 'file-finder' },
+  KeyS: { shift: false, alt: false, action: 'save' },
+  KeyW: { shift: false, alt: false, action: 'close-tab' },
 };
 
 const mac = process.platform === 'darwin';
@@ -37,6 +39,12 @@ contextBridge.exposeInMainWorld('cod', {
   onAction(callback) {
     listener = callback;
     while (queue.length) callback(queue.shift());
+  },
+  // Editor file access. The main process checks every path against the workspace folders.
+  editor: {
+    read: (workspaceId, file) => ipcRenderer.invoke('editor:read', workspaceId, file),
+    // contents is { text, eol, bom } as returned by read.
+    write: (workspaceId, file, contents) => ipcRenderer.invoke('editor:write', workspaceId, file, contents),
   },
   // Narrow chat API. The Claude process lives in the main process.
   chat: {
