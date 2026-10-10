@@ -32,9 +32,12 @@ const Editor = (function () {
     const element = el('div', { class: 'editor' }, strip, notice, surface);
     surface.hidden = true;
     notice.hidden = true;
+    // The editor takes room next to the chat only while it has something to show: a tab or a message.
+    const layout = () => element.classList.toggle('has-content', !surface.hidden || !notice.hidden);
     const report = message => {
       notice.textContent = message || '';
       notice.hidden = !message;
+      layout();
     };
 
     const spaces = new Map();   // workspace id -> { tabs, buffers: Map(path -> { state, saved, dirty }) }
@@ -114,6 +117,7 @@ const Editor = (function () {
         surface.hidden = false;
       }
       renderStrip();
+      layout();
     }
 
     function select(workspaceId, file) {
@@ -261,6 +265,7 @@ const Editor = (function () {
         };
       },
       focus() { view.focus(); },
+      promptOpen: () => prompt !== null,
     };
   }
 

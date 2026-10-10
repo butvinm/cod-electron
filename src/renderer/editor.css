@@ -3,12 +3,17 @@
 @font-face { font-family: Lilex; font-weight: 700; font-style: normal; src: url("fonts/lilex-latin-700-normal.woff2") format("woff2"); }
 @font-face { font-family: Lilex; font-weight: 400; font-style: italic; src: url("fonts/lilex-latin-400-italic.woff2") format("woff2"); }
 
+/* The workspace area is a column: the editor on top while it has content, the chat below it. */
 .editor {
-  display: flex;
+  display: none;
   flex-direction: column;
-  height: 100%;
+  flex: 1 1 0;
+  min-height: 0;
   min-width: 0;
 }
+
+.editor.has-content { display: flex; }
+.editor.has-content ~ .claude-chat { flex: 0 0 35%; border-top: 1px solid #363c46; }
 
 .editor-tabs {
   display: flex;

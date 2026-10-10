@@ -46,6 +46,15 @@ contextBridge.exposeInMainWorld('cod', {
     // contents is { text, eol, bom } as returned by read.
     write: (workspaceId, file, contents) => ipcRenderer.invoke('editor:write', workspaceId, file, contents),
   },
+  // Narrow chat API. The Claude process lives in the main process.
+  chat: {
+    info: workspaceId => ipcRenderer.invoke('chat:info', workspaceId),
+    send: (workspaceId, text) => ipcRenderer.invoke('chat:send', workspaceId, text),
+    interrupt: workspaceId => ipcRenderer.invoke('chat:interrupt', workspaceId),
+    onEvent(callback) {
+      ipcRenderer.on('chat:event', (_event, payload) => callback(payload.workspaceId, payload.event));
+    },
+  },
   // Narrow folder API. The main process owns the folder model and all file system access.
   project: {
     roots: workspaceId => ipcRenderer.invoke('project:roots', workspaceId),
