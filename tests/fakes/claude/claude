@@ -22,6 +22,8 @@ if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sess
 const stateFile = `${logFile}.${session}.session.json`;
 if (argv.includes('--resume') && !fs.existsSync(stateFile)) { console.error('Unknown session'); process.exit(1); }
 let state = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, 'utf8')) : { prompts: [], turn: 0 };
+let mcp;
+process.on('exit', () => mcp?.close());
 let active = false;
 let closed = false;
 const emit = event => {
@@ -50,10 +52,29 @@ async function turn(line) {
   const index = state.turn++;
   fs.writeFileSync(stateFile, JSON.stringify(state));
   log({ kind: 'turn', session_id: session, index, history: state.prompts });
+  if (argv.includes('--permission-prompt-tool') && argv.includes('--mcp-config')) mcp ||= await require('./mcp-client.cjs').connect(argv, log);
   const steps = scenario.turns[Math.min(index, scenario.turns.length - 1)];
   for (const step of steps) {
     if (step.gate) await gate(step.gate);
     else if (step.hold) await gate('interrupt-never-release');
+    else if (step.permission) {
+      if (!argv.includes('--permission-prompt-tool') || !argv.includes('--mcp-config')) {
+        log({ kind: 'permission-host-missing', request: step.permission });
+        // Keep the turn pending. Missing UI must fail at the permission assertion,
+        // not at a fake crash or an undocumented stream-json control message.
+        await gate('permission-host-never-release');
+      }
+      mcp ||= await require('./mcp-client.cjs').connect(argv, log);
+      const answer = await mcp.permission(step.permission);
+      if (answer.behavior === 'deny') {
+        for (const event of step.denied) {
+          const denied = JSON.parse(JSON.stringify(event), (_key, value) => typeof value === 'string' ? value.replaceAll('$REASON', answer.message) : value);
+          emit(denied);
+        }
+        break;
+      }
+      log({ kind: 'tool-run', tool_name: step.permission.tool_name, input: answer.updatedInput });
+    }
     else if (step.event) emit(step.event);
   }
   if (scenario.exitCode) { process.exitCode = scenario.exitCode; closed = true; inputLines.close(); process.stdin.destroy(); }
