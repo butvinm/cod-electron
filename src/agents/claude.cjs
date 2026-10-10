@@ -1,7 +1,9 @@
 'use strict';
 
 const { spawn } = require('node:child_process');
+const crypto = require('node:crypto');
 const { createParser } = require('./claude-events.cjs');
+const { createPermissionHost } = require('./permission-host.cjs');
 
 // Agent provider for the installed Claude CLI.
 //
@@ -9,10 +11,13 @@ const { createParser } = require('./claude-events.cjs');
 //   provider.start({ cwd, resume, onEvent, onExit }) -> session
 //   session.send(text)       writes one user message
 //   session.interrupt()      ends the turn; the process stops and onEvent gets { type: 'interrupted' }
-//   session.close()          stops the process without a visible event
+//   session.answerPermission(id, { allow, message })   replies to a 'permission-request' event
+//   session.close()        stops the process without a visible event
 //   session.alive            true until the process has exited
 //   session.interrupting     true once interrupt() was called; the session takes no more messages
 // Events are the chat events described in claude-events.cjs, plus
+//   { type: 'permission-request', id, tool, input }  Claude waits until answerPermission(id, ...) is called
+//   { type: 'permission-clear', id }                 the request went away without an answer
 //   { type: 'interrupted' } and { type: 'error', kind: 'missing', message }.
 // Only plain data crosses this interface, so the process could later run behind a socket.
 
@@ -37,9 +42,28 @@ function childEnv(source) {
 const INTERRUPT_GRACE_MS = 1500;
 
 function createClaudeProvider({ bin = process.env.COD_CLAUDE_BIN || 'claude', env = process.env, graceMs = INTERRUPT_GRACE_MS } = {}) {
+  // Permission requests arrive through a small local MCP server (see permission-host.cjs).
+  const host = createPermissionHost();
+
   function start({ cwd, resume, onEvent, onExit }) {
     const args = [...STREAMING_FLAGS];
     if (resume) args.push('--resume', resume);
+    const permissions = new Map(); // request id -> { input, resolve }
+    const registration = host.register((request, signal) => new Promise(resolve => {
+      if (!alive || quiet) { resolve({ behavior: 'deny', message: 'Cod is not taking requests right now.' }); return; }
+      const id = crypto.randomUUID();
+      permissions.set(id, { input: request.input, resolve });
+      signal.addEventListener('abort', () => {
+        if (permissions.delete(id)) emit({ type: 'permission-clear', id });
+        resolve({ behavior: 'deny', message: 'The request was cancelled.' });
+      });
+      emit({ type: 'permission-request', id, tool: request.tool_name, input: request.input });
+    }));
+    if (registration) args.push('--mcp-config', registration.config, '--permission-prompt-tool', registration.tool);
+    const denyAll = message => {
+      for (const entry of permissions.values()) entry.resolve({ behavior: 'deny', message });
+      permissions.clear();
+    };
     const parser = createParser();
     let alive = true;
     let interrupting = false;
@@ -90,6 +114,8 @@ function createClaudeProvider({ bin = process.env.COD_CLAUDE_BIN || 'claude', en
       if (!alive) return;
       alive = false;
       timers.forEach(clearTimeout);
+      denyAll('The Claude session ended.');
+      if (registration) registration.unregister();
       signalTree('SIGKILL');
       for (const event of parser.end()) emit(event);
       if (interrupting) {
@@ -121,9 +147,18 @@ function createClaudeProvider({ bin = process.env.COD_CLAUDE_BIN || 'claude', en
         turnActive = true;
         child.stdin.write(`${JSON.stringify({ type: 'user', message: { role: 'user', content: text } })}\n`);
       },
+      answerPermission(id, { allow, message }) {
+        const entry = permissions.get(id);
+        if (!entry) return;
+        permissions.delete(id);
+        entry.resolve(allow
+          ? { behavior: 'allow', updatedInput: entry.input }
+          : { behavior: 'deny', message: typeof message === 'string' && message ? message : 'The user denied this request.' });
+      },
       interrupt() {
         if (!alive || interrupting) return;
         interrupting = true;
+        denyAll('The user interrupted.');
         // Anything the process still prints for this turn is dropped.
         quiet = true;
         stop(['SIGINT', 'SIGTERM', 'SIGKILL']);
@@ -132,6 +167,7 @@ function createClaudeProvider({ bin = process.env.COD_CLAUDE_BIN || 'claude', en
       close() {
         if (!alive) return exited;
         quiet = true;
+        denyAll('The chat was closed.');
         child.stdin.end();
         stop(['SIGTERM', 'SIGKILL']);
         return exited;
@@ -139,7 +175,7 @@ function createClaudeProvider({ bin = process.env.COD_CLAUDE_BIN || 'claude', en
     };
   }
 
-  return { start };
+  return { start, ready: host.ready, close: () => host.close() };
 }
 
 module.exports = { createClaudeProvider, childEnv, CREDENTIAL_NAME, STREAMING_FLAGS };

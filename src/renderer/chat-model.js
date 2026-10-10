@@ -8,7 +8,19 @@
   'use strict';
 
   function createChat() {
-    return { items: [], busy: false, sessionId: null, nextKey: 1 };
+    return { items: [], busy: false, sessionId: null, permission: null, nextKey: 1 };
+  }
+
+  // The session status shown in the chat header.
+  function statusOf(state) {
+    if (state.permission) return 'Needs input';
+    return state.busy ? 'Working' : 'Ready';
+  }
+
+  // The full text of a tool input for the permission prompt: a command as it is, anything else as JSON.
+  function permissionText(input) {
+    if (input && typeof input === 'object' && typeof input.command === 'string') return input.command;
+    return toolInputText(input);
   }
 
   const LOGIN_HELP = 'Claude is not logged in. Run `claude auth login` in a terminal, then send your message again.';
@@ -49,14 +61,20 @@
           ...state,
           items: state.items.map(item => (item.kind === 'tool' && item.toolId === event.id ? { ...item, output: event.output, isError: event.isError } : item)),
         };
+      case 'permission-request':
+        return { ...state, permission: { id: event.id, tool: event.tool, input: event.input } };
+      case 'permission-clear':
+        return state.permission && state.permission.id === event.id ? { ...state, permission: null } : state;
+      case 'permission-answered':
+        return { ...state, permission: null };
       case 'turn-end':
-        return { ...settle(state, 'complete'), busy: false };
+        return { ...settle(state, 'complete'), busy: false, permission: null };
       case 'error': {
         const message = event.kind === 'not-logged-in' ? LOGIN_HELP : event.message;
-        return push(settle(state, 'complete'), { kind: 'error', message }, { busy: false });
+        return push(settle(state, 'complete'), { kind: 'error', message }, { busy: false, permission: null });
       }
       case 'interrupted':
-        return push(settle(state, 'interrupted'), { kind: 'interrupted' }, { busy: false });
+        return push(settle(state, 'interrupted'), { kind: 'interrupted' }, { busy: false, permission: null });
       default:
         return state;
     }
@@ -93,7 +111,7 @@
     return blocks;
   }
 
-  const api = { createChat, reduce, toolTarget, toolInputText, splitBlocks, LOGIN_HELP };
+  const api = { createChat, reduce, statusOf, permissionText, toolTarget, toolInputText, splitBlocks, LOGIN_HELP };
   if (typeof window !== 'undefined') window.ChatModel = api;
   if (typeof module !== 'undefined') module.exports = api;
 })();

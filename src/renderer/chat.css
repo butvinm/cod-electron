@@ -141,3 +141,55 @@
 
 .chat-composer::placeholder { color: var(--text-muted); }
 .chat-composer:focus { border-color: #47679e; }
+
+.chat-status { flex: none; color: var(--text-muted); }
+.claude-chat:has(.chat-permission:not([hidden])) .chat-status { color: #dec184; }
+
+.chat-permission {
+  flex: none;
+  margin: 0 16px;
+  padding: 10px 12px;
+  background-color: var(--tab-bar);
+  border: 1px solid #47679e;
+  border-radius: 6px;
+}
+.chat-permission[hidden], .chat-permission [hidden] { display: none; }
+.chat-permission-title { color: var(--text); }
+.chat-permission-tool { font-weight: 600; }
+.chat-permission-input {
+  margin: 8px 0;
+  padding: 6px 8px;
+  max-height: 120px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+  font: 12px ui-monospace, "SF Mono", Menlo, monospace;
+  background-color: var(--editor);
+  border: 1px solid var(--border-variant);
+  border-radius: 4px;
+}
+.chat-permission-choices { display: flex; gap: 8px; }
+.chat-permission-choice {
+  padding: 4px 10px;
+  color: var(--text);
+  font: inherit;
+  background-color: var(--tab-inactive);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.chat-permission-choice:hover { background-color: var(--hover); }
+.chat-permission-choice:focus-visible, .chat-permission-reason:focus { outline: none; border-color: #47679e; background-color: var(--active); }
+.chat-permission-reason {
+  flex: 1;
+  padding: 4px 8px;
+  color: var(--text);
+  font: inherit;
+  user-select: text;
+  background-color: var(--editor);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.chat-permission-hint { margin-top: 8px; font-size: 11px; color: var(--text-muted); }
+.chat-permission-hint kbd { font: inherit; color: var(--text); }

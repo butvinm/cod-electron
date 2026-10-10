@@ -44,8 +44,9 @@ const fileIndex = new FileIndex(id => folders.list(id), workspaceId => {
 });
 
 // Claude chat. The agent process lives here; the page only gets events and a narrow API.
+const claude = createClaudeProvider();
 const chats = new Chats({
-  provider: createClaudeProvider(),
+  provider: claude,
   folders: { list: id => folders.list(id) },
   emit: (workspaceId, event) => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('chat:event', { workspaceId, event });
@@ -79,9 +80,15 @@ ipcMain.handle('finder:query', (_event, workspaceId, text) => {
 });
 
 ipcMain.handle('chat:info', (_event, workspaceId) => chats.info(String(workspaceId)));
-ipcMain.handle('chat:send', (_event, workspaceId, text) => {
+ipcMain.handle('chat:send', async (_event, workspaceId, text) => {
   if (typeof text !== 'string' || !text.trim() || text.length > 200000) throw new Error('Message must be non-empty text');
+  await claude.ready; // the permission server must be listening before Claude starts
   chats.send(String(workspaceId), text);
+});
+ipcMain.handle('chat:permission', (_event, workspaceId, id, answer) => {
+  if (typeof id !== 'string' || !answer || typeof answer.allow !== 'boolean') throw new Error('Bad permission answer');
+  const message = typeof answer.message === 'string' ? answer.message.slice(0, 2000) : undefined;
+  chats.answerPermission(String(workspaceId), id, { allow: answer.allow, message, scope: answer.scope === 'session' ? 'session' : 'once' });
 });
 ipcMain.handle('chat:interrupt', (_event, workspaceId) => { chats.interrupt(String(workspaceId)); });
 
