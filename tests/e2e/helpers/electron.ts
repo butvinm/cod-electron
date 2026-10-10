@@ -39,7 +39,24 @@ export const test = base.extend<{ cod: Cod }>({
         }
       }
     } finally {
-      try { await app?.close(); } finally { rmSync(profile, { recursive: true, force: true }); }
+      try {
+        if (app) {
+          const process = app.process();
+          if (process.exitCode === null && process.signalCode === null) {
+            const exited = new Promise<void>((resolve) => process.once('exit', () => resolve()));
+            const killTimeout = setTimeout(() => process.kill('SIGKILL'), 2_000);
+            try {
+              // Teardown bypasses quit prompts. Exiting can disconnect evaluate before it returns.
+              void app.evaluate(({ app }) => app.exit(0)).catch(() => {});
+              await exited;
+            } finally {
+              clearTimeout(killTimeout);
+            }
+          }
+        }
+      } finally {
+        rmSync(profile, { recursive: true, force: true });
+      }
     }
   },
 });
