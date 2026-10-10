@@ -1,7 +1,7 @@
 // The only module that touches CodeMirror. esbuild bundles it to dist/editor-cm.js (see scripts/build-editor.mjs).
 // It exposes one global, CodEditor, so the rest of the renderer stays plain JS.
 import { EditorState, RangeSetBuilder } from '@codemirror/state';
-import { EditorView, Decoration, ViewPlugin, WidgetType, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection } from '@codemirror/view';
+import { EditorView, Decoration, ViewPlugin, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { syntaxTree, ensureSyntaxTree, indentUnit, bracketMatching } from '@codemirror/language';
 import { highlightTree, tagHighlighter, tags as t } from '@lezer/highlight';
@@ -114,41 +114,6 @@ const highlighting = ViewPlugin.fromClass(class {
   }
 }, { decorations: plugin => plugin.decorations });
 
-// A blank line is "<div><br></div>", which element.innerText reads as two extra line breaks, so a file with
-// one empty line reads back with two. An empty <p> reads as exactly one blank line, so each blank line carries one.
-// The last line is left alone: a file that ends in a newline would otherwise read back with a stray line break.
-class BlankLine extends WidgetType {
-  eq() { return true; }
-  toDOM() {
-    const p = document.createElement('p');
-    p.className = 'cod-blank-line';
-    return p;
-  }
-}
-
-function blankLineDecorations(view) {
-  const builder = new RangeSetBuilder();
-  const widget = Decoration.widget({ widget: new BlankLine(), side: 1 });
-  const doc = view.state.doc;
-  let last = -1;
-  for (const { from, to } of view.visibleRanges) {
-    for (let pos = from; pos <= to;) {
-      const line = doc.lineAt(pos);
-      if (line.from > last && line.length === 0 && line.number < doc.lines) builder.add(line.from, line.from, widget);
-      last = line.from;
-      pos = line.to + 1;
-    }
-  }
-  return builder.finish();
-}
-
-const blankLines = ViewPlugin.fromClass(class {
-  constructor(view) { this.decorations = blankLineDecorations(view); }
-  update(update) {
-    if (update.docChanged || update.viewportChanged) this.decorations = blankLineDecorations(update.view);
-  }
-}, { decorations: plugin => plugin.decorations });
-
 const theme = EditorView.theme({
   '&': { height: '100%', backgroundColor: colors.background, color: colors.foreground },
   '&.cm-focused': { outline: 'none' },
@@ -188,7 +153,6 @@ function create({ parent, onChange }) {
           keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
           languageFor(file),
           highlighting,
-          blankLines,
           theme,
           nonce,
           EditorView.contentAttributes.of({ 'data-testid': 'editor-content', 'aria-label': 'Editor', spellcheck: 'false' }),

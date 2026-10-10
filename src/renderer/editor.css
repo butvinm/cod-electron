@@ -75,14 +75,6 @@
 .editor-surface[hidden] { display: none; }
 .editor-surface > .cm-editor { position: absolute; inset: 0; }
 
-/* The empty last line of a file that ends in a newline keeps its height but adds no extra line break to the copied or read text. */
-.editor-surface .cm-line:last-child:not(:first-child) { min-height: 1.618em; }
-.editor-surface .cm-line:last-child:not(:first-child) > br:only-child { display: none; }
-
-/* Blank lines carry an empty <p> (see editor-cm.js) so they read back as one blank line. It must keep the line's height. */
-.editor-surface .cod-blank-line { display: inline-block; width: 0; height: 1.618em; margin: 0; vertical-align: top; }
-.editor-surface .cm-line:has(.cod-blank-line) > br { display: none; }
-
 /* One Dark syntax colors for the categories the editor emits. */
 [data-syntax-token="keyword"], [data-syntax-token="preproc"] { color: #b477cf; }
 [data-syntax-token="string"], [data-syntax-token="text.literal"] { color: #a1c181; }
