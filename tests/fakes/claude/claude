@@ -1,0 +1,71 @@
+#!/usr/bin/env node
+'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+const readline = require('node:readline');
+const { randomUUID } = require('node:crypto');
+const argv = process.argv.slice(2);
+const option = name => argv[argv.indexOf(name) + 1];
+const logFile = process.env.COD_FAKE_CLAUDE_LOG;
+if (!logFile) throw new Error('COD_FAKE_CLAUDE_LOG is required');
+const log = record => fs.appendFileSync(logFile, JSON.stringify({ pid: process.pid, ...record }) + '\n');
+log({ kind: 'start', argv, cwd: process.cwd(), envNames: Object.keys(process.env).filter(name => /^(ANTHROPIC_|CLAUDE_|COD_|HOME$)/.test(name)).sort() });
+for (const [name, value] of [['--input-format', 'stream-json'], ['--output-format', 'stream-json']]) {
+  if (!argv.includes(name) || option(name) !== value) { console.error(`Expected ${name} ${value}`); process.exit(2); }
+}
+if (!(argv.includes('-p') || argv.includes('--print')) || !argv.includes('--verbose') || !argv.includes('--include-partial-messages')) {
+  console.error('Expected print mode, --verbose and --include-partial-messages'); process.exit(2);
+}
+const scenario = JSON.parse(fs.readFileSync(path.join(__dirname, 'scenarios', `${process.env.COD_FAKE_CLAUDE_SCENARIO || 'reply'}.json`), 'utf8'));
+const session = argv.includes('--resume') ? option('--resume') : argv.includes('--session-id') ? option('--session-id') : '550e8400-e29b-41d4-a716-446655440008';
+if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(session)) { console.error('Invalid session UUID'); process.exit(2); }
+const stateFile = `${logFile}.${session}.session.json`;
+if (argv.includes('--resume') && !fs.existsSync(stateFile)) { console.error('Unknown session'); process.exit(1); }
+let state = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, 'utf8')) : { prompts: [], turn: 0 };
+let active = false;
+let closed = false;
+const emit = event => {
+  const wire = JSON.parse(JSON.stringify(event, (_key, value) => value === '$SESSION' ? session : value === '$CWD' ? process.cwd() : value === '$UUID' ? randomUUID() : value));
+  process.stdout.write(JSON.stringify(wire) + '\n');
+  log({ kind: 'emit', type: wire.type, session_id: session });
+};
+for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => {
+  log({ kind: 'signal', signal, session_id: session });
+  process.exit(signal === 'SIGINT' ? 130 : 143);
+});
+function gate(name) {
+  const directory = process.env.COD_FAKE_CLAUDE_GATES;
+  const file = path.join(directory, name);
+  return new Promise(resolve => {
+    const watcher = fs.watch(directory, () => { if (fs.existsSync(file)) { watcher.close(); resolve(); } });
+    if (fs.existsSync(file)) { watcher.close(); resolve(); }
+    log({ kind: 'gate', name });
+  });
+}
+async function turn(line) {
+  log({ kind: 'stdin', line });
+  const input = JSON.parse(line);
+  if (input.type !== 'user' || input.message?.role !== 'user' || !(typeof input.message.content === 'string' || Array.isArray(input.message.content))) throw new Error('Expected stream-json user message');
+  state.prompts.push(input.message.content);
+  const index = state.turn++;
+  fs.writeFileSync(stateFile, JSON.stringify(state));
+  log({ kind: 'turn', session_id: session, index, history: state.prompts });
+  const steps = scenario.turns[Math.min(index, scenario.turns.length - 1)];
+  for (const step of steps) {
+    if (step.gate) await gate(step.gate);
+    else if (step.hold) await gate('interrupt-never-release');
+    else if (step.event) emit(step.event);
+  }
+  if (scenario.exitCode) { process.exitCode = scenario.exitCode; closed = true; inputLines.close(); process.stdin.destroy(); }
+}
+const pending = [];
+async function drain() {
+  if (active) return;
+  active = true;
+  try { while (pending.length) await turn(pending.shift()); }
+  catch (error) { log({ kind: 'error', message: error.message }); console.error(error.message); process.exitCode = 2; closed = true; inputLines.close(); process.stdin.destroy(); }
+  finally { active = false; if (closed) process.exit(process.exitCode || 0); }
+}
+const inputLines = readline.createInterface({ input: process.stdin });
+inputLines.on('line', line => { if (line.trim()) { pending.push(line); void drain(); } });
+inputLines.on('close', () => { closed = true; if (!active) process.exit(process.exitCode || 0); });

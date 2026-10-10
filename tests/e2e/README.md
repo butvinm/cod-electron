@@ -84,3 +84,59 @@ git add package.json playwright.config.ts .github/workflows/e2e.yml \
 git diff --cached --check
 git commit -m 'Add workspace tab acceptance tests and Electron harness for #3'
 ```
+
+# Story #8 developer handoff
+
+Story: #8 - Claude chat in a workspace. Tests: `tests/e2e/a1-claude-chat.spec.ts`. Fake: `tests/fakes/claude/claude` and its scenario JSON files. QA owns those files and this contract. No app implementation is included.
+
+The suite reuses `tests/e2e/helpers/electron.ts` for real Electron launch, isolated user data, screenshots and cleanup. An automatic fixture supplies environment hooks before the shared harness starts the app, and restores the worker environment afterward. No test-only renderer or injection of app state is allowed.
+
+Honor `COD_CLAUDE_BIN` as an executable path override in the real main-process CLI launch path. Without it, use the installed `claude` on PATH. Pass the fake-only `COD_FAKE_CLAUDE_*` environment hooks through to the child in tests. They select scripts and log/gate paths; they do not bypass the production parser. Read `tests/fakes/claude/README.md` for the protocol sources and inferred fields. Run the executable directly and retain its executable bit.
+
+Use print mode, `--input-format stream-json`, `--output-format stream-json`, `--verbose` and `--include-partial-messages`. Write stream-json user messages to stdin. Retain native session persistence and display the actual init/result session ID. After an interrupted process, spawn the next process with `--resume <id>`. Never use `--bare` or enable bare mode with `CLAUDE_CODE_SIMPLE`, and never forward credential variables. The two token values supplied to the Electron parent are invented probes, not real accounts.
+
+## Chat DOM contract
+
+Selectors below live under the active `workspace-area`. Inactive workspaces must keep their own transcripts. The tests focus the accessible composer and send keyboard events; tool summaries must also be reachable by Tab.
+
+| data-testid | Meaning |
+| --- | --- |
+| claude-chat | Visible chat pane for the active workspace |
+| chat-user-message | One user transcript entry, preserving submitted newlines |
+| chat-assistant-message | One assistant reply, with data-state=streaming, complete or interrupted; text contains only reply text |
+| chat-tool-call | One tool block with a button whose accessible name includes tool name and target, and aria-expanded=true or false |
+| chat-tool-input | Expanded tool input, hidden or absent while collapsed |
+| chat-tool-output | Expanded tool output, hidden or absent while collapsed |
+| chat-interrupted | Visible interruption marker, separate from assistant text |
+| chat-working-directory | Visible working directory description; no-folder case includes home path and the word home |
+| chat-session-id | Native UUID only as visible text, without a label prefix |
+| chat-error | Plain missing-CLI/install or logged-out/claude auth login guidance |
+
+The composer has textbox role and accessible name `Message Claude`; it needs no test ID. Enter submits and Shift+Enter inserts a newline. Esc from the composer interrupts the active turn. AC2 covers keyboard expansion/collapse and a click expansion variant, and attaches an expanded-tool screenshot for the PM's comparison with stock Zed. That screenshot is not a completed visual verdict or a validated clip.
+
+## Criteria and dependencies
+
+| AC | Automated scenario |
+| --- | --- |
+| AC1 | Newline/send, partial text visible before fake releases final text, completed transcript, fresh chat in another workspace, return to original transcript |
+| AC2 | Collapsed Read/notes.txt block, Tab reachability, Enter expansion with input/output, collapse and click expansion |
+| AC3 | Held-open reply, Esc really stops the process, visible interrupted state, next message resumes identical session ID with retained history |
+| AC4 | No-folder launch cwd is the real user's home, with visible explanation. First-folder case is blocked by story #4 below. |
+| AC5 | Three variants: streaming flags and no bare/token variables, missing executable install guidance, authentication result guidance |
+| AC6 | Displayed native UUID, independent second CLI process with --resume using persisted history |
+
+Story #4 is still in review. This checkout's README has no `COD_TEST_PICK_FOLDERS` contract and the app has no folder-picker implementation. AC4's first-folder requirement remains a dependency, not a skip, PASS or a replacement with injected internal state. QA must add a keyboard-driven picker test with two temporary folders through story #4's documented hook when it lands, and assert the fake starts in the first one. Do not claim full AC4 coverage until then.
+
+AC5's executable/env assertions and auth/missing errors are automated. They do not prove absence of credential reads/storage elsewhere: reviewer source inspection or a separate access audit is still required. AC6 proves native ID plumbing and fake persisted continuation; the permitted live CLI check must confirm real session compatibility and inferred protocol fields.
+
+## Run outside the Codex sandbox
+
+The eight collected tests all begin with the chat-pane assertion. With the current story #3 app, the expected first failure is `Story #8 Claude chat is missing: each workspace needs a visible chat pane`, with locator `claude-chat` not found. This is an expected failure description, not a measured result. QA has not launched Electron or confirmed failure output.
+
+On macOS, from this worktree root, run exactly:
+
+```sh
+caffeinate -dimsu npx playwright test tests/e2e/a1-claude-chat.spec.ts --reporter=list > artifacts/8/run.txt 2>&1
+```
+
+Return `artifacts/8/run.txt` to QA for the per-criterion expected-failure verdict. There are eight tests because AC5 has three independent launch scenarios. No files are committed or staged. Developer owns app implementation, the executable hook and the DOM contract; QA retains the acceptance assertions.
