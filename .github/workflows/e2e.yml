@@ -21,6 +21,8 @@ jobs:
           sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2t64 libgbm1 libxss1 libatk-bridge2.0-0 libdrm2
       - name: Install test dependencies
         run: npm install --no-audit --no-fund
+      - name: Build the editor bundle
+        run: npm run build
       - name: Configure the Electron SUID sandbox
         run: |
           sudo chown root node_modules/electron/dist/chrome-sandbox
