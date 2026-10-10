@@ -1,10 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 
 const require = createRequire(import.meta.url);
 const { createParser } = require('../../src/agents/claude-events.cjs');
-const { childEnv } = require('../../src/agents/claude.cjs');
+const { childEnv, createClaudeProvider } =require('../../src/agents/claude.cjs');
 const { Chats } = require('../../src/agents/chats.cjs');
 const { createChat, reduce, toolTarget, splitBlocks } = require('../../src/renderer/chat-model.js');
 
@@ -138,4 +142,73 @@ test('Chats: cwd is the first folder or home, and a new process after an interru
   first.options.onEvent({ type: 'text', text: 'late' });
   first.options.onEvent({ type: 'interrupted' });
   assert.deepEqual(emitted.map(([, e]) => e.type), ['session', 'interrupted']);
+});
+
+test('Chats: a changed first folder moves an idle process at once and a busy one after its turn, keeping the session', () => {
+  const provider = fakeProvider();
+  const roots = { w1: [] };
+  const chats = new Chats({ provider, folders: { list: id => roots[id] || [] }, emit: () => {}, home: '/home/me' });
+  chats.send('w1', 'one');
+  const first = provider.started[0];
+  assert.equal(first.options.cwd, '/home/me');
+  first.options.onEvent({ type: 'session', id: 'abc' });
+  // Mid-turn: the folder changes, but the real directory stays until the turn ends.
+  roots.w1 = ['/proj/a'];
+  chats.foldersChanged('w1');
+  assert.equal(first.alive, true);
+  assert.deepEqual(chats.info('w1'), { cwd: '/home/me', home: true });
+  first.options.onEvent({ type: 'turn-end' });
+  assert.equal(first.alive, false);
+  assert.deepEqual(chats.info('w1'), { cwd: '/proj/a', home: false });
+  chats.send('w1', 'two');
+  const second = provider.started[1];
+  assert.equal(second.options.cwd, '/proj/a');
+  assert.equal(second.options.resume, 'abc');
+  second.options.onEvent({ type: 'turn-end' });
+  // Idle: the change applies immediately.
+  roots.w1 = ['/proj/b'];
+  chats.foldersChanged('w1');
+  assert.equal(second.alive, false);
+  chats.send('w1', 'three');
+  assert.equal(provider.started[2].options.cwd, '/proj/b');
+  assert.equal(provider.started[2].options.resume, 'abc');
+});
+
+const stubborn = fileURLToPath(new URL('./helpers/stubborn-claude.cjs', import.meta.url));
+const alive = pid => { try { process.kill(pid, 0); return true; } catch { return false; } };
+
+async function stubbornSession(onEvent) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'cod-unit-stubborn-'));
+  const pidFile = path.join(dir, 'pids');
+  const provider = createClaudeProvider({ bin: stubborn, env: { ...process.env, STUBBORN_PID_FILE: pidFile }, graceMs: 100 });
+  const session = provider.start({ cwd: dir, onEvent, onExit: () => {} });
+  session.send('hi');
+  for (let i = 0; i < 100 && !existsSync(pidFile); i++) await new Promise(resolve => setTimeout(resolve, 50));
+  await new Promise(resolve => setTimeout(resolve, 100));
+  const [cli, tool] = readFileSync(pidFile, 'utf8').split(' ').map(Number);
+  return { session, cli, tool, dir };
+}
+
+test('interrupt on a process that ignores signals still ends it, its tools, and reports interrupted', async () => {
+  const events = [];
+  const { session, cli, tool, dir } = await stubbornSession(event => events.push(event.type));
+  try {
+    session.interrupt();
+    await session.exited;
+    assert.equal(alive(cli), false);
+    assert.equal(alive(tool), false);
+    assert.deepEqual(events, ['interrupted']);
+    assert.equal(session.alive, false);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('close on a process that ignores signals still ends it and its tools', async () => {
+  const events = [];
+  const { session, cli, tool, dir } = await stubbornSession(event => events.push(event.type));
+  try {
+    await session.close();
+    assert.equal(alive(cli), false);
+    assert.equal(alive(tool), false);
+    assert.deepEqual(events, []);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
