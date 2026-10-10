@@ -63,6 +63,18 @@
 .editor-tab-close { flex: none; width: 18px; height: 18px; padding: 0; line-height: 16px; visibility: hidden; }
 .editor-tab:hover .editor-tab-close, .editor-tab[aria-selected="true"] .editor-tab-close { visibility: visible; }
 
+/* One quiet line under the tabs, in Zed's error red (One Dark "error"). */
+.editor-notice {
+  flex: none;
+  padding: 4px 12px;
+  color: #d07277;
+  background-color: #2f343e;
+  border-bottom: 1px solid #363c46;
+  user-select: text;
+}
+
+.editor-notice[hidden] { display: none; }
+
 .editor-surface {
   position: relative;
   flex: 1;

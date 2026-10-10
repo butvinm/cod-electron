@@ -50,7 +50,27 @@
     return (index + delta + count) % count;
   }
 
-  const api = { createTabs, open, activate, close, displayPath, moveChoice };
+  // An IPC failure arrives as "Error invoking remote method 'x': Error: reason". Keep only the reason.
+  function errorMessage(error) {
+    const text = String((error && error.message) || error || 'Unknown error');
+    return text.replace(/^Error invoking remote method '[^']*': /, '').replace(/^Error: /, '');
+  }
+
+  // Runs a save. On failure it reports a message, gives focus back to the editor and resolves false,
+  // so the caller keeps the tab dirty. On success it clears any earlier message.
+  async function attemptSave({ write, report, restoreFocus, name }) {
+    try {
+      await write();
+      report(null);
+      return true;
+    } catch (error) {
+      report(`Could not save ${name}: ${errorMessage(error)}`);
+      restoreFocus();
+      return false;
+    }
+  }
+
+  const api = { createTabs, open, activate, close, displayPath, moveChoice, errorMessage, attemptSave };
   if (typeof module !== 'undefined') module.exports = api;
   else root.EditorTabs = api;
 })(globalThis);

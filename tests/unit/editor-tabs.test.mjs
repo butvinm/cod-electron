@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 
-const { createTabs, open, activate, close, displayPath, moveChoice } = createRequire(import.meta.url)('../../src/renderer/editor-tabs.js');
+const { createTabs, open, activate, close, displayPath, moveChoice, errorMessage, attemptSave } = createRequire(import.meta.url)('../../src/renderer/editor-tabs.js');
 
 const opened = (...files) => files.reduce(open, createTabs());
 
@@ -53,6 +53,33 @@ test('displayPath is relative to the root, with the root name when there are sev
   assert.equal(displayPath(['/p/orchard'], '/p/orchard/src/a.ts'), 'src/a.ts');
   assert.equal(displayPath(['/p/orchard', '/p/harbor'], '/p/harbor/a.ts'), 'harbor/a.ts');
   assert.equal(displayPath(['/p/orch'], '/p/orchard/a.ts'), '/p/orchard/a.ts');
+});
+
+test('errorMessage strips the IPC wrapper', () => {
+  assert.equal(errorMessage(new Error("Error invoking remote method 'editor:write': Error: No space left")), 'No space left');
+  assert.equal(errorMessage('plain'), 'plain');
+});
+
+// Both entry points (Cmd+S and the close prompt's Save) go through attemptSave.
+for (const entry of ['Cmd+S', 'close prompt Save']) {
+  test(`a failed save from ${entry} shows a message, restores focus and reports failure`, async () => {
+    const events = [];
+    const ok = await attemptSave({
+      name: 'a.txt',
+      write: async () => { throw new Error("Error invoking remote method 'editor:write': Error: disk full"); },
+      report: message => events.push(['report', message]),
+      restoreFocus: () => events.push(['focus']),
+    });
+    assert.equal(ok, false);
+    assert.deepEqual(events, [['report', 'Could not save a.txt: disk full'], ['focus']]);
+  });
+}
+
+test('a successful save clears the message', async () => {
+  const events = [];
+  const ok = await attemptSave({ name: 'a.txt', write: async () => {}, report: m => events.push(m), restoreFocus: () => events.push('focus') });
+  assert.equal(ok, true);
+  assert.deepEqual(events, [null]);
 });
 
 test('moveChoice wraps both ways', () => {

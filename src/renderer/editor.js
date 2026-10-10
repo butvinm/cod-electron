@@ -3,7 +3,7 @@
 // The tab list logic is in editor-tabs.js and CodeMirror is behind the CodEditor global (editor-cm.js).
 // A classic script, like the other renderer files.
 const Editor = (function () {
-  const { createTabs, open: openTab, activate: activateTab, close: closeTab, displayPath, moveChoice } = EditorTabs;
+  const { createTabs, open: openTab, activate: activateTab, close: closeTab, displayPath, moveChoice, errorMessage, attemptSave } = EditorTabs;
   const choices = [
     { id: 'save', label: 'Save' },
     { id: 'discard', label: "Don't Save" },
@@ -27,8 +27,15 @@ const Editor = (function () {
   function create({ roots, focusFallback }) {
     const strip = el('div', { class: 'editor-tabs', role: 'tablist', 'aria-label': 'Open files' });
     const surface = el('div', { class: 'editor-surface', testid: 'editor-surface' });
-    const element = el('div', { class: 'editor' }, strip, surface);
+    // A quiet one-line message under the tabs, for failed saves and files that cannot be opened.
+    const notice = el('div', { class: 'editor-notice', role: 'alert', testid: 'editor-notice' });
+    const element = el('div', { class: 'editor' }, strip, notice, surface);
     surface.hidden = true;
+    notice.hidden = true;
+    const report = message => {
+      notice.textContent = message || '';
+      notice.hidden = !message;
+    };
 
     const spaces = new Map();   // workspace id -> { tabs, buffers: Map(path -> { state, saved, dirty }) }
     const pending = new Set();  // "workspace id\0path" of reads in flight
@@ -46,6 +53,7 @@ const Editor = (function () {
       onChange(state) {
         if (!shown) return;
         shown.buffer.state = state;
+        report(null);
         refreshDirty(shown.buffer);
       },
     });
@@ -101,6 +109,7 @@ const Editor = (function () {
         if (!shown || shown.buffer !== buffer) {
           view.setState(buffer.state);
           shown = { workspaceId: current, file, buffer };
+          report(null);
         }
         surface.hidden = false;
       }
@@ -120,11 +129,12 @@ const Editor = (function () {
         if (pending.has(key)) return;
         pending.add(key);
         try {
-          const text = await window.cod.editor.read(workspaceId, file);
+          const { text, eol, bom } = await window.cod.editor.read(workspaceId, file);
           const state = view.stateFor(file, text);
-          s.buffers.set(file, { state, saved: state.doc, dirty: false });
+          s.buffers.set(file, { state, saved: state.doc, dirty: false, eol, bom });
         } catch (error) {
           console.error(error);
+          if (workspaceId === current) report(`Cannot open ${basename(file)}: ${errorMessage(error)}`);
           return;
         } finally {
           pending.delete(key);
@@ -137,17 +147,25 @@ const Editor = (function () {
       }
     }
 
-    async function writeBuffer(workspaceId, file, buffer) {
+    // Resolves true when the file is on disk. On failure the buffer stays dirty, a message shows and the editor gets focus back.
+    function writeBuffer(workspaceId, file, buffer) {
       const state = stateOf(buffer);
-      await window.cod.editor.write(workspaceId, file, CodEditor.textOf(state));
-      buffer.saved = state.doc;
-      refreshDirty(buffer);
+      return attemptSave({
+        name: basename(file),
+        report,
+        restoreFocus: () => { if (shown) view.focus(); },
+        async write() {
+          await window.cod.editor.write(workspaceId, file, { text: CodEditor.textOf(state), eol: buffer.eol, bom: buffer.bom });
+          buffer.saved = state.doc;
+          refreshDirty(buffer);
+        },
+      });
     }
 
     async function save() {
       if (prompt || !shown) return;
       const { workspaceId, file, buffer } = shown;
-      try { await writeBuffer(workspaceId, file, buffer); } catch (error) { console.error(error); }
+      await writeBuffer(workspaceId, file, buffer);
     }
 
     // The in-window prompt of Zed 1.23.2: three stacked buttons, Save highlighted first.
@@ -198,12 +216,8 @@ const Editor = (function () {
           if (shown) view.focus();
           return;
         }
-        if (choice === 'save') {
-          try { await writeBuffer(workspaceId, file, buffer); } catch (error) {
-            console.error(error);
-            return;
-          }
-        }
+        // A failed save keeps the tab open and dirty; writeBuffer has shown the message and refocused the editor.
+        if (choice === 'save' && !(await writeBuffer(workspaceId, file, buffer))) return;
       }
       s.tabs = closeTab(s.tabs, file);
       s.buffers.delete(file);
