@@ -9,6 +9,11 @@ const Editor = (function () {
     { id: 'discard', label: "Don't Save" },
     { id: 'cancel', label: 'Cancel' },
   ];
+  const manyChoices = [
+    { id: 'save', label: 'Save all' },
+    { id: 'discard', label: 'Discard all' },
+    { id: 'cancel', label: 'Cancel' },
+  ];
 
   function el(tag, props = {}, ...kids) {
     const node = document.createElement(tag);
@@ -174,8 +179,20 @@ const Editor = (function () {
 
     // The in-window prompt of Zed 1.23.2: three stacked buttons, Save highlighted first.
     function askToSave(workspaceId, file) {
+      const message = el('p', { class: 'editor-prompt-message' }, el('code', { text: displayPath(roots(workspaceId), file) }), ' contains unsaved edits. Do you want to save it?');
+      return ask(message, choices);
+    }
+
+    // The multi-file form: the same card with a list of paths and Save all / Discard all / Cancel.
+    function askToSaveAll(entries) {
+      const list = el('ul', { class: 'editor-prompt-files' }, ...entries.map(({ workspaceId, file }) =>
+        el('li', { testid: 'editor-save-prompt-file', text: displayPath(roots(workspaceId), file) })));
+      const message = el('div', { class: 'editor-prompt-message' }, el('p', { text: 'Do you want to save changes to the following files?' }), list);
+      return ask(message, manyChoices);
+    }
+
+    function ask(message, choices) {
       return new Promise(resolve => {
-        const message = el('p', { class: 'editor-prompt-message' }, el('code', { text: displayPath(roots(workspaceId), file) }), ' contains unsaved edits. Do you want to save it?');
         const buttons = choices.map(choice => el('button', { class: 'editor-prompt-button', 'data-choice': choice.id, text: choice.label }));
         const dialog = el('div', { class: 'editor-prompt', role: 'alertdialog', 'aria-modal': 'true', 'aria-label': 'Unsaved changes', testid: 'editor-save-prompt', tabindex: '-1' },
           message, el('div', { class: 'editor-prompt-buttons' }, ...buttons));
@@ -232,8 +249,56 @@ const Editor = (function () {
       }
     }
 
+    // Asks about the modified files of the given workspaces, in workspace order, then tab order.
+    // Resolves true when it is fine to go on: nothing was modified, the user discarded, or every file was saved.
+    // On Cancel or a failed save it resolves false. A failure first calls showWorkspace(id) and
+    // then activates the failing tab and shows its error, so the user sees what went wrong.
+    async function confirmClose(workspaceIds, showWorkspace) {
+      if (prompt) return false;
+      const entries = [];
+      for (const workspaceId of workspaceIds) {
+        const s = spaces.get(workspaceId);
+        if (!s) continue;
+        for (const file of s.tabs.paths) if (s.buffers.get(file)?.dirty) entries.push({ workspaceId, file });
+      }
+      if (entries.length === 0) return true;
+      const before = document.activeElement;
+      const choice = await askToSaveAll(entries);
+      if (choice === 'discard') return true;
+      if (choice === 'save') {
+        for (const { workspaceId, file } of entries) {
+          const buffer = spaces.get(workspaceId)?.buffers.get(file);
+          if (!buffer || !buffer.dirty) continue;
+          let message = null;
+          const ok = await attemptSave({
+            name: basename(file),
+            report: text => { message = text; report(text); },
+            restoreFocus: () => {},
+            async write() {
+              const state = stateOf(buffer);
+              await window.cod.editor.write(workspaceId, file, { text: CodEditor.textOf(state), eol: buffer.eol, bom: buffer.bom });
+              buffer.saved = state.doc;
+              refreshDirty(buffer);
+            },
+          });
+          if (ok) continue;
+          space(workspaceId).tabs = activateTab(space(workspaceId).tabs, file);
+          showWorkspace(workspaceId);
+          sync();
+          report(message);
+          view.focus();
+          return false;
+        }
+        return true;
+      }
+      if (before && before.isConnected) before.focus();
+      else if (shown) view.focus();
+      return false;
+    }
+
     return {
       element,
+      confirmClose,
       open,
       save,
       closeActive() {

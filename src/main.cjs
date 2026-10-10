@@ -133,6 +133,42 @@ function createWindow() {
 app.whenReady().then(createWindow);
 
 // Quitting waits, with a cap, until every Claude process and the tools it started are gone.
-app.on('before-quit', createQuitGuard({ cleanup: () => chats.closeAll(), capMs: 5000, quit: () => app.quit() }));
+const chatQuitGuard = createQuitGuard({ cleanup: () => chats.closeAll(), capMs: 5000, quit: () => app.quit() });
+
+// Before that, the page asks about modified files. Cancel or a failed save stops the quit.
+let askingToQuit = false;
+let quitConfirmed = false;
+let askCounter = 0;
+
+function askPageToQuit() {
+  const win = mainWindow;
+  if (!win || win.isDestroyed() || win.webContents.isLoading() || win.webContents.isCrashed()) return Promise.resolve(true);
+  const id = ++askCounter;
+  return new Promise(resolve => {
+    const finish = answer => {
+      ipcMain.removeListener('quit:answer', onAnswer);
+      win.removeListener('closed', onClosed);
+      resolve(answer);
+    };
+    const onAnswer = (_event, answerId, answer) => { if (answerId === id) finish(answer !== false); };
+    const onClosed = () => finish(true);
+    ipcMain.on('quit:answer', onAnswer);
+    win.once('closed', onClosed);
+    win.webContents.send('quit:ask', id);
+  });
+}
+
+app.on('before-quit', event => {
+  if (quitConfirmed) return chatQuitGuard(event);
+  event.preventDefault();
+  if (askingToQuit) return;
+  askingToQuit = true;
+  askPageToQuit().then(ok => {
+    askingToQuit = false;
+    if (!ok) return;
+    quitConfirmed = true;
+    app.quit();
+  });
+});
 
 app.on('window-all-closed', () => app.quit());

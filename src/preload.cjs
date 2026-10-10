@@ -40,6 +40,14 @@ contextBridge.exposeInMainWorld('cod', {
     listener = callback;
     while (queue.length) callback(queue.shift());
   },
+  // The main process asks before quitting. The callback resolves true when quitting may go on.
+  onQuitRequest(callback) {
+    ipcRenderer.on('quit:ask', async (_event, id) => {
+      let answer = true;
+      try { answer = await callback(); } catch (error) { console.error(error); }
+      ipcRenderer.send('quit:answer', id, answer);
+    });
+  },
   // Editor file access. The main process checks every path against the workspace folders.
   editor: {
     read: (workspaceId, file) => ipcRenderer.invoke('editor:read', workspaceId, file),
