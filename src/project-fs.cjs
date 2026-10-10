@@ -27,4 +27,4 @@ function readDir(dir) {
   return entries.sort(compare);
 }
 
-module.exports = { readDir, compare };
+module.exports = { readDir, compare, EXCLUDED };
