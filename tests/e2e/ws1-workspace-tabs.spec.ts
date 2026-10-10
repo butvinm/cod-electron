@@ -18,11 +18,19 @@ async function expectActive(page: Page, name: string) {
   expect(id).toBeTruthy();
   await expect(area(page)).toHaveAttribute('data-workspace-id', id!);
   await expect(area(page)).toBeVisible();
+  await expect(page.getByTestId('workspace-area').and(page.locator(':visible'))).toHaveCount(1);
+  await expect(area(page).getByTestId('claude-chat')).toHaveAttribute('data-workspace-id', id!);
+}
+
+async function expectFresh(page: Page) {
+  await expect(area(page).getByTestId(/^chat-(?:user-|assistant-)?message$/)).toHaveCount(0);
+  await expect(area(page).getByTestId('editor-tab')).toHaveCount(0);
 }
 
 async function addByKeyboard(page: Page, expectedName: string) {
   await page.keyboard.press(newWorkspaceKey);
   await expectActive(page, expectedName);
+  await expectFresh(page);
 }
 
 const theme = JSON.parse(readFileSync(path.join(root, 'tests/fixtures/zed-themes/one.json'), 'utf8'));
@@ -37,7 +45,7 @@ test('AC1: clean startup shows one empty workspace within 3 seconds in One Dark'
   await expect(page.getByTestId('cod-window')).toBeVisible();
   await expect(tabs(page)).toHaveCount(1);
   await expectActive(page, 'Workspace 1');
-  await expect(area(page)).toHaveText('');
+  await expectFresh(page);
   expect(performance.now() - startedAt, 'First window with its initial empty workspace must be ready within 3000 ms of Electron launch').toBeLessThanOrEqual(3000);
   expect(app.windows()).toHaveLength(1);
   await expect(page.getByTestId('cod-window')).toHaveCSS('background-color', rgb('background'));
@@ -55,10 +63,10 @@ test('AC2: plus and the new-workspace key append numbered tabs and activate them
   await page.getByTestId('workspace-add').click();
   await expect(labels(page)).toHaveText(['Workspace 1', 'Workspace 2']);
   await expectActive(page, 'Workspace 2');
-  await expect(area(page)).toHaveText('');
+  await expectFresh(page);
   await addByKeyboard(page, 'Workspace 3');
   await expect(labels(page)).toHaveText(['Workspace 1', 'Workspace 2', 'Workspace 3']);
-  await expect(area(page)).toHaveText('');
+  await expectFresh(page);
   expect(app.windows(), 'New workspace must stay in the same window').toHaveLength(1);
 });
 
@@ -112,7 +120,8 @@ test('AC4: close button and close key select a neighbour and replace the last wo
     expect(newId).toBeTruthy();
     await expect(area(page)).toHaveAttribute('data-workspace-id', newId!);
     await expect(area(page)).toBeVisible();
-    await expect(area(page)).toHaveText('');
+    await expectActive(page, (await selected(page).getByTestId('workspace-tab-label').innerText()));
+    await expectFresh(page);
     expect(app.windows()).toHaveLength(1);
   }
 });

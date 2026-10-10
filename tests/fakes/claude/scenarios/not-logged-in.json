@@ -1,0 +1,28 @@
+{
+  "turns": [
+    [
+      {
+        "event": {
+          "type": "result",
+          "subtype": "error_during_execution",
+          "is_error": true,
+          "result": "Not logged in. Please run claude auth login.",
+          "errors": [
+            "Not logged in. Please run claude auth login."
+          ],
+          "session_id": "$SESSION",
+          "duration_ms": 1,
+          "duration_api_ms": 1,
+          "num_turns": 1,
+          "total_cost_usd": 0,
+          "usage": {
+            "input_tokens": 1,
+            "output_tokens": 5
+          },
+          "uuid": "$UUID"
+        }
+      }
+    ]
+  ],
+  "exitCode": 1
+}

@@ -4,6 +4,9 @@ const { app, BrowserWindow, dialog, ipcMain } = require('electron');
 const { Folders } = require('./folders.cjs');
 const { readDir } = require('./project-fs.cjs');
 const { FileIndex } = require('./file-index.cjs');
+const { createClaudeProvider } = require('./agents/claude.cjs');
+const { Chats } = require('./agents/chats.cjs');
+const { createQuitGuard } = require('./agents/quit-guard.cjs');
 
 // Must run before the app is ready so no real profile is touched in tests.
 if (process.env.COD_USER_DATA_DIR) {
@@ -40,8 +43,18 @@ const fileIndex = new FileIndex(id => folders.list(id), workspaceId => {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('finder:rebuilt', workspaceId);
 });
 
+// Claude chat. The agent process lives here; the page only gets events and a narrow API.
+const chats = new Chats({
+  provider: createClaudeProvider(),
+  folders: { list: id => folders.list(id) },
+  emit: (workspaceId, event) => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('chat:event', { workspaceId, event });
+  },
+});
+
 folders.on('change', payload => {
   fileIndex.reset(payload.workspaceId);
+  chats.foldersChanged(payload.workspaceId);
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('project:roots-changed', payload);
 });
 
@@ -53,6 +66,7 @@ ipcMain.handle('project:add-folders', async (_event, workspaceId) => {
 });
 
 ipcMain.handle('project:forget', (_event, workspaceId) => {
+  chats.forget(String(workspaceId));
   folders.forget(String(workspaceId));
   fileIndex.forget(String(workspaceId));
 });
@@ -63,6 +77,13 @@ ipcMain.handle('finder:query', (_event, workspaceId, text) => {
   if (typeof text !== 'string') throw new Error('Query must be a string');
   return fileIndex.query(String(workspaceId), text.slice(0, 200));
 });
+
+ipcMain.handle('chat:info', (_event, workspaceId) => chats.info(String(workspaceId)));
+ipcMain.handle('chat:send', (_event, workspaceId, text) => {
+  if (typeof text !== 'string' || !text.trim() || text.length > 200000) throw new Error('Message must be non-empty text');
+  chats.send(String(workspaceId), text);
+});
+ipcMain.handle('chat:interrupt', (_event, workspaceId) => { chats.interrupt(String(workspaceId)); });
 
 ipcMain.handle('project:read-dir', (_event, dir) => {
   if (typeof dir !== 'string' || !folders.contains(dir)) throw new Error('Not inside a workspace folder');
@@ -97,5 +118,8 @@ function createWindow() {
 }
 
 app.whenReady().then(createWindow);
+
+// Quitting waits, with a cap, until every Claude process and the tools it started are gone.
+app.on('before-quit', createQuitGuard({ cleanup: () => chats.closeAll(), capMs: 5000, quit: () => app.quit() }));
 
 app.on('window-all-closed', () => app.quit());

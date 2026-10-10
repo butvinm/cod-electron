@@ -10,6 +10,10 @@ const rootsOf = {};    // workspace id -> absolute root paths, mirrored from the
 const listings = {};   // directory path -> [{ name, path, isDirectory }]
 let focusPanelNext = false;
 
+// Each workspace has one chat. Its DOM is kept, so render() only moves it into the new area.
+const chats = {};      // workspace id -> chat view from chat.js
+const chatOf = id => (chats[id] = chats[id] || Chat.create({ workspaceId: id, chatApi: window.cod.chat }));
+
 const panelOf = id => (panels[id] = panels[id] || createPanelState());
 
 function el(tag, props = {}, ...kids) {
@@ -121,6 +125,7 @@ function render() {
   const plusHadFocus = focused?.dataset?.testid === 'workspace-add';
   const addHadFocus = focused?.dataset?.testid === 'project-add-folder';
   const panelHadFocus = focused?.dataset?.testid === 'project-panel';
+  const chatFocus = focused && chats[state.activeId]?.element.contains(focused) ? focused : null;
   const oldScroller = root.querySelector('.tabs');
   const scrollLeft = oldScroller ? oldScroller.scrollLeft : 0;
   const oldTree = root.querySelector('.project-tree');
@@ -152,6 +157,7 @@ function render() {
   bar.append(plus);
 
   const area = el('div', { class: 'workspace-area', testid: 'workspace-area', 'data-workspace-id': state.activeId });
+  area.append(chatOf(state.activeId).element);
   const body = el('div', { class: 'workbench' });
   const panel = panelOf(state.activeId).open ? projectPanel(state.activeId) : null;
   if (panel) body.append(panel);
@@ -169,6 +175,7 @@ function render() {
   // While the finder is open it keeps focus, whatever redraws underneath.
   if (finder.isOpen()) finder.focus();
   else if (panel && focusPanelNext) panel.focus({ preventScroll: true });
+  else if (chatFocus) chatFocus.focus({ preventScroll: true });
   else if (panel && addHadFocus) panel.querySelector('.project-add').focus({ preventScroll: true });
   else if (panel && panelHadFocus) panel.focus({ preventScroll: true });
   else (plusHadFocus ? plus : active).focus({ preventScroll: true });
@@ -183,6 +190,7 @@ function update(next) {
   for (const ws of gone) {
     delete panels[ws.id];
     delete rootsOf[ws.id];
+    delete chats[ws.id];
     window.cod.project.forget(ws.id).catch(console.error);
   }
   render();
@@ -238,8 +246,19 @@ window.cod.project.onRootsChanged(async ({ workspaceId, roots }) => {
   const ps = panelOf(workspaceId);
   for (const r of fresh) ps.expanded.add(r);
   rootsOf[workspaceId] = roots;
+  chats[workspaceId]?.refreshInfo();
   render();
 });
+
+// Esc interrupts the running reply of the active workspace, wherever focus is in it.
+// Overlays come first: while the file finder is open, Esc only closes it.
+window.addEventListener('keydown', event => {
+  if (event.key !== 'Escape' || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || finder.isOpen()) return;
+  if (chats[state.activeId]?.interrupt()) event.preventDefault();
+}, true);
+
+// Chat events can arrive for any workspace, not only the visible one.
+window.cod.chat.onEvent((workspaceId, event) => chats[workspaceId]?.apply(event));
 
 // File watching is out of scope. Instead, listings refresh when the window gains focus.
 window.addEventListener('focus', async () => {
