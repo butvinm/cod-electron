@@ -110,7 +110,84 @@ button:focus-visible, .tab:focus-visible { outline: 1px solid #47679e; outline-o
   line-height: 20px;
 }
 
+.workbench {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
 .workspace-area {
   flex: 1;
+  min-width: 0;
   background-color: var(--editor);
 }
+
+/* Project panel in the left dock. Colors from Zed's One theme. */
+.project-panel {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  width: 240px;
+  background-color: var(--tab-bar);
+  border-right: 1px solid var(--border-variant);
+  outline: none;
+}
+
+.project-header {
+  display: flex;
+  flex: none;
+  padding: 4px 8px;
+}
+
+.project-add { padding: 2px 8px; }
+
+.project-tree {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-bottom: 4px;
+}
+
+.project-entry {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding-right: 8px;
+  color: var(--text);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.project-entry:hover { background-color: var(--hover); }
+.project-entry[aria-selected="true"] { background-color: var(--hover); }
+.project-panel:focus-within .project-entry[aria-selected="true"] { background-color: var(--active); }
+
+.project-entry-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A small chevron drawn with borders; it points right when closed and down when open. */
+.project-entry-toggle {
+  position: relative;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+}
+
+button.project-entry-toggle::before {
+  content: "";
+  position: absolute;
+  top: 5px;
+  left: 4px;
+  width: 5px;
+  height: 5px;
+  border-right: 1.5px solid var(--text-muted);
+  border-bottom: 1.5px solid var(--text-muted);
+  transform: rotate(-45deg);
+}
+
+button.project-entry-toggle.open::before { top: 4px; transform: rotate(45deg); }
