@@ -150,6 +150,43 @@ test.describe('AC3', () => {
     expect(starts[1].argv).toEqual(expect.arrayContaining(['--resume', session]));
     expect(fake.records().filter(record => record.kind === 'turn').map(record => record.session_id)).toEqual([session, session]);
   });
+
+  test('AC3: Escape from the project panel interrupts the reply and resumes the same session', async ({ cod: { page }, fake }) => {
+    await requireChat(page);
+    await send(page, 'Start a long reply');
+    await expect(replies(page).last()).toHaveText('Still working');
+    await expect(replies(page).last()).toHaveAttribute('data-state', 'streaming');
+    const session = (await chat(page).getByTestId('chat-session-id').innerText()).trim();
+    const start = fake.records().find(record => record.kind === 'start')!;
+    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+    await page.keyboard.press(`${modifier}+Shift+e`);
+    const panel = page.getByTestId('project-panel');
+    await expect(panel).toBeVisible();
+    await expect.poll(() => panel.evaluate(node => node === document.activeElement || node.contains(document.activeElement)), {
+      message: 'Story #4 focus shortcut must move focus into the project panel before Escape',
+    }).toBe(true);
+    await expect(composer(page)).not.toBeFocused();
+    await expect(replies(page).last()).toHaveAttribute('data-state', 'streaming');
+    await page.keyboard.press('Escape');
+    await expect(replies(page).last()).toHaveAttribute('data-state', 'interrupted');
+    await expect(chat(page).getByTestId('chat-interrupted')).toHaveText(/interrupted/i);
+    await expect.poll(() => { try { process.kill(start.pid, 0); return false; } catch { return true; } }, {
+      message: 'Escape from the project panel must stop the fake CLI',
+    }).toBe(true);
+    await send(page, 'Continue after interrupt');
+    await expect(replies(page)).toHaveCount(2);
+    await expect(replies(page).first()).toHaveAttribute('data-state', 'interrupted');
+    await expect(replies(page).last()).toHaveText('Continuing the same conversation.');
+    await expect(replies(page).last()).toHaveAttribute('data-state', 'complete');
+    await expect(chat(page).getByTestId('chat-session-id')).toHaveText(session);
+    const starts = fake.records().filter(record => record.kind === 'start');
+    expect(starts).toHaveLength(2);
+    expect(starts[1].pid).not.toBe(starts[0].pid);
+    expect(starts[1].argv!.slice(starts[1].argv!.indexOf('--resume'), starts[1].argv!.indexOf('--resume') + 2)).toEqual(['--resume', session]);
+    const turns = fake.records().filter(record => record.kind === 'turn');
+    expect(turns.map(record => record.session_id)).toEqual([session, session]);
+    expect(turns[1].history).toEqual(['Start a long reply', 'Continue after interrupt']);
+  });
 });
 
 test('AC4: no-folder chat runs Claude in the user home and explains the working directory', async ({ cod: { page }, fake }) => {
@@ -165,6 +202,44 @@ test('AC4: no-folder chat runs Claude in the user home and explains the working 
 
 test.describe('AC4 first folder', () => {
   test.use({ firstFolder: true });
+
+  test('AC4: adding the first folder after a home turn resumes the session in that folder', async ({ cod: { page }, fake }) => {
+    await requireChat(page);
+    await expect(chat(page).getByTestId('chat-working-directory')).toContainText(homedir());
+    await expect(chat(page).getByTestId('chat-working-directory')).toContainText(/home/i);
+    await send(page, 'Remember the first message');
+    await expect(replies(page).last()).toHaveText('Hello from fake Claude.');
+    await expect(replies(page).last()).toHaveAttribute('data-state', 'complete');
+    const session = (await chat(page).getByTestId('chat-session-id').innerText()).trim();
+    const initialStarts = fake.records().filter(record => record.kind === 'start');
+    expect(initialStarts).toHaveLength(1);
+    expect(initialStarts[0].cwd).toBe(homedir());
+    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+    await page.keyboard.press(`${modifier}+Shift+e`);
+    const panel = page.getByTestId('project-panel');
+    await expect(panel).toBeVisible();
+    await expect(panel.getByTestId('project-root')).toHaveCount(0);
+    await panel.getByTestId('project-add-folder').focus();
+    await page.keyboard.press('Enter');
+    await expect(panel.getByTestId('project-root')).toHaveCount(1);
+    await expect(panel.getByTestId('project-root')).toHaveAttribute('data-path', fake.folders[0]);
+    await expect(chat(page).getByTestId('chat-working-directory')).toContainText(fake.folders[0]);
+    await send(page, 'Continue in the new folder');
+    await expect(replies(page)).toHaveCount(2);
+    await expect(replies(page).last()).toHaveText('I remember the first message.');
+    await expect(replies(page).last()).toHaveAttribute('data-state', 'complete');
+    await expect(chat(page).getByTestId('chat-session-id')).toHaveText(session);
+    await expect(chat(page).getByTestId('chat-working-directory')).toContainText(fake.folders[0]);
+    const starts = fake.records().filter(record => record.kind === 'start');
+    expect(starts).toHaveLength(2);
+    expect(starts[1].pid).not.toBe(starts[0].pid);
+    expect(starts[1].cwd).toBe(fake.folders[0]);
+    expect(starts[1].argv!.slice(starts[1].argv!.indexOf('--resume'), starts[1].argv!.indexOf('--resume') + 2)).toEqual(['--resume', session]);
+    const turns = fake.records().filter(record => record.kind === 'turn');
+    expect(turns.map(record => record.session_id)).toEqual([session, session]);
+    expect(turns[1].history).toEqual(['Remember the first message', 'Continue in the new folder']);
+  });
+
   test('AC4: with two workspace folders Claude runs in the first folder and shows it', async ({ cod: { page }, fake }) => {
     await requireChat(page);
     const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
