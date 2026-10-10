@@ -71,4 +71,4 @@ class Folders extends EventEmitter {
   }
 }
 
-module.exports = { Folders };
+module.exports = { Folders, realOrNull, isInside };

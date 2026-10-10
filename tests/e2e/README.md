@@ -147,6 +147,75 @@ On Linux with Electron system libraries: `xvfb-run -a npx playwright test tests/
 
 Return artifacts/4/run.txt to QA to confirm all five fail at the missing-panel assertion. No commit or PR was created. All new files remain uncommitted. The intentionally ignored fixture must be staged separately with `git add -f tests/fixtures/projects/orchard/ignored.txt` when the PM commits outside this sandbox.
 
+# Story #6 developer handoff
+
+Story: #6 - Fuzzy file finder across the workspace. The offline issue source is `artifacts/6/issue.md`. Branch: `tests/6-file-finder`, based on the story #4 tests branch. QA owns `c1-file-finder.spec.ts` and this README section. Developer owns app files and the real finder. Expected hand-back: implementation PR with unchanged acceptance assertions, any Zed exceptions, run output and the finder look-check screenshot.
+
+## Offline Zed 1.23.2 evidence and open questions
+
+The [pinned keymaps and provenance](../fixtures/zed-keymaps/README.md) establish these defaults:
+
+| Action | macOS evidence | Linux evidence |
+| --- | --- | --- |
+| Open finder | [default-macos.json:756](../fixtures/zed-keymaps/default-macos.json#L756), `cmd-p`: `file_finder::Toggle` | [default-linux.json:702](../fixtures/zed-keymaps/default-linux.json#L702), `ctrl-p`: `file_finder::Toggle` |
+| Next / previous result | [default-macos.json:17-20](../fixtures/zed-keymaps/default-macos.json#L17), `down` / `up`: `menu::SelectNext` / `menu::SelectPrevious` | [default-linux.json:13-16](../fixtures/zed-keymaps/default-linux.json#L13), same actions |
+| Confirm / cancel | [default-macos.json:21-27](../fixtures/zed-keymaps/default-macos.json#L21), `enter` / `escape`: `menu::Confirm` / `menu::Cancel` | [default-linux.json:17-21](../fixtures/zed-keymaps/default-linux.json#L17), same actions |
+| Toggle include ignored in finder | [default-macos.json:1312-1315](../fixtures/zed-keymaps/default-macos.json#L1312), FileFinder context, `cmd-shift-i`: `search::ToggleIncludeIgnored` | [default-linux.json:1258-1261](../fixtures/zed-keymaps/default-linux.json#L1258), FileFinder context, `ctrl-shift-i`: `search::ToggleIncludeIgnored` |
+
+AC1's Cmd+P is tested as Ctrl+P on Linux to follow the pinned platform default. The include-ignored action proves a binding exists; it does not prove its initial state. The tests enforce the story's stated default of excluding ignored files without invoking that toggle.
+
+Open questions for PM: confirm the stock finder layout, filename/path formatting, highlight styling, click activation, focus restoration and default ignore behavior against Zed 1.23.2. Keymaps cannot verify these behaviors offline. AC2 expects the full root-relative file path, including its basename, in the path field, following the issue's wording; confirm this matches Zed's presentation. The test does not prescribe fuzzy ranking. The AC2 screenshot attachment must still be compared with stock Zed; it is not a completed look check or a validated clip.
+
+## Reused hooks and fixture lifecycle
+
+Reuse `tests/e2e/helpers/electron.ts`, the isolated profile, and the story #4 hooks above. Each test supplies one `COD_TEST_PICK_FOLDERS` response containing all its roots. The add-folder button is focused and activated with Enter through the real UI. No roots are preloaded and no finder API is injected. AC3 uses `COD_TEST_OPEN_REQUEST_LOG_PATH` at the real open-file dispatch boundary; the existing contract remains required even if editor tabs are added. It checks exact path, workspace identity, request count and no requests during navigation.
+
+An automatic fixture copies `orchard` and `harbor` for AC1-AC3. AC4 generates its own `.gitignore`, ignored file, ignored directory content, explicitly unignored file, visible control file and a `.git/hidden-marker.txt` sentinel. Every root runs real `git init`. AC5 generates exactly 20,000 project files in a fresh temporary root: 19,999 ordinary files and one unique `q` match. Git metadata is additional and excluded from the project-file count. These generated files are never committed. The fixture restores both environment variables and removes all generated directories after Electron closes, including on failures.
+
+## Story #6 data-testid contract
+
+Existing workspace and project-panel selectors retain their story #3 and #4 meanings. Add these selectors to the real UI:
+
+| Selector | Required meaning |
+| --- | --- |
+| file-finder | The single visible finder overlay for the active workspace; hidden or absent when closed |
+| file-finder-query | Focused text input inside the finder; keep this DOM element stable during query updates |
+| file-finder-result | One displayed file row, with role=option, aria-selected=true or false, and absolute data-path |
+| file-finder-name | Basename text inside each result row |
+| file-finder-path | Full root-relative path including basename inside each result row, using `/` separators |
+| file-finder-match | One or more spans containing only matched characters, in path order; combined text equals the query for the tested matches, with visible color, background, weight or text-decoration emphasis compared with the parent |
+
+Render each matched character once for highlight assertions, even when the basename and path both contain it. Exactly one result is selected when matches exist, initially the first result. Up/Down change that selection while retaining query focus. Enter and clicking a row activate its absolute path and close the finder. Escape closes the finder and restores the exact previous focused control. These are DOM and behavior contracts for the tests, not a new test-only UI.
+
+## Criteria, expected failure and timing evidence
+
+| AC | Test in c1-file-finder.spec.ts | Coverage |
+| --- | --- | --- |
+| AC1 | Cmd+P opens the finder and Escape restores the previous focus | Empty workspace and two-root workspace; focus returns to the tab or add-folder control |
+| AC2 | fuzzy path matches span active roots with names, relative paths and highlights | Noncontiguous `fst` matches in both roots, path-specific `afst` filtering, no results from another workspace, screenshot attachment |
+| AC3 | Up/Down select results and Enter or a click dispatches the chosen file | Selection changes and reverses, no navigation requests, exact keyboard and mouse open requests |
+| AC4 | .gitignore rules exclude files and directories and .git is never listed | Positive control, negation rule, ignored file, ignored directory content and Git sentinel under the same query |
+| AC5 | first matching results render within 200 ms of a keystroke in 20,000 files | First `q` keystroke after opening, renderer-clock timing to a visible animation frame with the unique matching row, filename and path; JSON latency attachment |
+
+Each scenario first opens the finder in the empty workspace. The intended first failure is `Story #6 file finder is missing: Cmd+P/Ctrl+P must show the real finder`, followed by Playwright's visibility assertion for `file-finder`. This checks the missing story #6 feature before attempting story #4 setup. Once the finder exists, the project panel and its hooks must be implemented for the remaining assertions. The current checkout contains story #3 app code but neither the project panel nor finder. These expected failures have not been measured.
+
+AC5 arms a keydown listener on the query input, sends a real Playwright `q` keypress and measures `performance.now()` in the renderer until an animation frame sees the correct visible result with its name and path. It excludes automation IPC and polling time, does not warm up queries, and rejects stale unfiltered rows by requiring exactly the one `q` match. Missing results fail after a 1000 ms frame deadline; matching results must take at most 200 ms. The measurement samples DOM visibility at the animation frame before paint, not physical screen presentation. There is no test-only timing hook. The attached JSON records the measured milliseconds. Fixture construction and folder opening are outside the measured interval; indexing delays that remain at the keystroke are included.
+
+## Run story #6 outside the sandbox
+
+No Electron process was launched. Dependencies are absent, so Playwright collection, type checking and the red baseline remain pending. `node --experimental-strip-types --check tests/e2e/c1-file-finder.spec.ts` passes syntax validation. This is not a test execution or a criterion PASS. No commit or PR was created. The only changed files for this story are `tests/e2e/c1-file-finder.spec.ts` and `tests/e2e/README.md`, both uncommitted.
+
+Install locked dependencies with `npm ci --no-audit --no-fund` outside the sandbox if needed. From this worktree root on macOS, run exactly:
+
+```sh
+mkdir -p artifacts/6
+caffeinate -dimsu npx playwright test tests/e2e/c1-file-finder.spec.ts --reporter=list > artifacts/6/run.txt 2>&1
+```
+
+On Linux with Electron system libraries: `xvfb-run -a npx playwright test tests/e2e/c1-file-finder.spec.ts --reporter=list`.
+
+Expected collection: five tests. Return `artifacts/6/run.txt` to QA. All five must fail at the missing-finder assertion before the red baseline is accepted; dependency, launch, fixture or prerequisite failures are not acceptable evidence for story #6.
+
 # Story #8 developer handoff
 
 Story: #8 - Claude chat in a workspace. Tests: `tests/e2e/a1-claude-chat.spec.ts`. Fake: `tests/fakes/claude/claude` and its scenario JSON files. QA owns those files and this contract. No app implementation is included.

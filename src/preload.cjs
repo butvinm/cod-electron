@@ -11,6 +11,7 @@ const keys = {
   KeyQ: { shift: true, alt: true, action: 'close' },
   KeyB: { shift: false, alt: false, action: 'toggle-panel' },
   KeyE: { shift: true, alt: false, action: 'focus-panel' },
+  KeyP: { shift: false, alt: false, action: 'file-finder' },
 };
 
 const mac = process.platform === 'darwin';
@@ -44,6 +45,11 @@ contextBridge.exposeInMainWorld('cod', {
     forget: workspaceId => ipcRenderer.invoke('project:forget', workspaceId),
     readDir: dir => ipcRenderer.invoke('project:read-dir', dir),
     openFile: (workspaceId, file) => ipcRenderer.invoke('project:open-file', workspaceId, file),
+    finderPrepare: workspaceId => ipcRenderer.invoke('finder:prepare', workspaceId),
+    finderQuery: (workspaceId, text) => ipcRenderer.invoke('finder:query', workspaceId, text),
+    onFinderRebuilt(callback) {
+      ipcRenderer.on('finder:rebuilt', (_event, workspaceId) => callback(workspaceId));
+    },
     onRootsChanged(callback) {
       ipcRenderer.on('project:roots-changed', (_event, payload) => callback(payload));
     },
