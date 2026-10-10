@@ -95,3 +95,65 @@ Direct npx playwright runs do not build the editor bundle.
 If dependencies or the editor bundle are missing, prepare them with npm ci and npm run build before measuring the baseline.
 Return artifacts/17/run.txt to QA for the measured verdict.
 No files were staged or committed, and no PR was created.
+
+## Additional lifecycle coverage on story/17-close-dirty
+
+The existing five tests and their assertions are unchanged.
+Three additional scenarios cover the stakeholder's QA handoff:
+
+| Criteria | Added scenario |
+| --- | --- |
+| AC3, AC5 | BrowserWindow.close() shows the multi-file prompt; keyboard Cancel keeps the window, workspace identity, dirty buffer and disk bytes; a second window close followed by Discard all exits normally without writing |
+| AC2, AC5 | Three additional app.quit() calls while the prompt is open retain the original DOM dialog; a MutationObserver counts exactly one prompt creation; Save all writes both drafts and produces one will-quit event, one window close, one application close and one normal process exit |
+| AC2, AC5 | Quit Save all writes an earlier file in another workspace, then fails on a read-only temporary target; the app stays alive, selects the failing workspace and tab, displays the save error and keeps that draft dirty; the earlier file stays saved |
+
+The read-only scenario changes only temporary fixture permissions and restores them in finally.
+It makes sample.ts read-only (0444) and its containing temporary repository read-only (0555), because atomic replacement can overwrite a read-only file in a writable directory.
+It checks W_OK before requesting quit and requires an unprivileged test runner.
+A privileged runner that bypasses permissions fails this fixture prerequisite; it must not be reported as a product failure.
+The original directory-target AC2 test still covers a deterministic save failure even under root.
+
+Window-close and quit requests use the real Electron lifecycle.
+Window-close requests are scheduled on the next main-process turn so evaluate returns even when the missing close guard would terminate the process.
+Repeated quit requests run after the first prompt is visibly open.
+DOM observation and the will-quit listener only count externally visible events; they do not invoke renderer internals or modify save behavior.
+Successful exits are asserted before harness teardown, including exit code 0 and no signal.
+The partial-failure test saves the remaining draft through the keyboard after restoring permissions.
+
+## Typing during Save all: deferred to deterministic unit coverage
+
+There is no deterministic end-to-end write barrier exposed by the current app.
+The editor:write IPC handler calls EditorFiles.write synchronously in the main process.
+That method uses synchronous writeSync, fsyncSync and renameSync calls on small local fixture files.
+A keyboard command issued after Enter can therefore arrive after the write and window close; increasing file size or sleeping would create a timing race rather than prove typing happened while the targeted write was pending.
+EditorFiles has an injectable beforeCommit hook for unit tests, but the main process does not expose that hook to the Electron harness.
+Monkey-patching filesystem methods, replacing the IPC handler or renderer editor API through evaluate would test altered application internals and violate the real-app testing contract.
+No app code or test hook was added by QA.
+
+The required unit scenario is to hold the targeted editor write promise, attempt a real editor document change while Save all awaits it, release the write, and verify either that editing was blocked or that close is rejected and the newer document remains dirty and intact.
+Also verify that the saved snapshot corresponds to the text actually written, rather than incorrectly marking the newer document saved.
+The current tests/unit/editor-files.test.mjs beforeCommit checks cover filesystem target replacement, not this renderer buffer race.
+Renderer typing-during-save coverage remains unverified and is a developer handoff requirement, not a PASS claim.
+If a future handoff authorizes an app hook, a fixture-scoped write-start notification and explicit release barrier would allow keyboard-driven Electron coverage without sleeps.
+
+## Validation of the additions
+
+Playwright --list collected all eight tests successfully (five existing and three new).
+TypeScript checking of c1-close-dirty.spec.ts passed with --noEmit --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --skipLibCheck.
+git diff --check passed, and comparison with HEAD confirmed every existing helper, test body and assertion is unchanged.
+
+Collect without launching Electron:
+
+```sh
+npx playwright test tests/e2e/c1-close-dirty.spec.ts --list --reporter=list
+```
+
+Run outside the sandbox as an unprivileged user after dependencies and the editor bundle are ready:
+
+```sh
+caffeinate -dimsu npx playwright test tests/e2e/c1-close-dirty.spec.ts --reporter=list
+```
+
+No Electron run was performed while authoring these additions.
+These lifecycle scenarios extend an existing implementation, so no failing baseline or passing verdict is claimed without a measured run.
+The user explicitly requested no commits; no files were staged, committed or published.

@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync } from 'node:fs';
+import { accessSync, chmodSync, constants, cpSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -279,4 +279,150 @@ test('AC5: app quit prompts for modified files in inactive workspaces and Cancel
     await saveCurrent(page, file, draft);
   }
   expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
+});
+
+test('AC5: window close prompts, Cancel keeps the edit, and Discard all exits without writing', async ({ cod: { page, app }, projects }) => {
+  const id = await addFolder(page, projects.orchard);
+  const file = path.join(projects.orchard, 'scratch.txt');
+  const original = readFileSync(file, 'utf8');
+  const draft = 'AC5 window close draft';
+  await modify(page, file, draft);
+  // Use the production BrowserWindow close event, not app.quit() or destroy().
+  await app.evaluate(({ BrowserWindow }) => { setTimeout(() => BrowserWindow.getAllWindows()[0].close(), 0); });
+  await expectPrompt(page, ['scratch.txt']);
+  await page.keyboard.press('ArrowUp');
+  await highlighted(page, 'Cancel');
+  await page.keyboard.press('Enter');
+  await expect(prompt(page)).toBeHidden();
+  expect(page.isClosed(), 'Cancel must keep the window alive').toBe(false);
+  expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
+  await expect(workspace(page, id)).toBeVisible();
+  await expectText(page, draft);
+  await expect(editorTab(page, file).getByTestId('editor-unsaved-indicator')).toBeVisible();
+  expect(readFileSync(file, 'utf8')).toBe(original);
+
+  await app.evaluate(({ BrowserWindow }) => { setTimeout(() => BrowserWindow.getAllWindows()[0].close(), 0); });
+  await expectPrompt(page, ['scratch.txt']);
+  await page.keyboard.press('ArrowDown');
+  await highlighted(page, 'Discard all');
+  const appProcess = app.process();
+  await Promise.all([
+    app.waitForEvent('close'),
+    page.keyboard.press('Enter').catch(error => {
+      // The app can exit before Playwright acknowledges the key press.
+      if (!String(error).includes('Target page, context or browser has been closed')) throw error;
+    }),
+  ]);
+  await expect.poll(() => appProcess.exitCode, { message: 'Discard all must exit the app through window close' }).toBe(0);
+  await expect.poll(() => page.isClosed()).toBe(true);
+  expect(appProcess.signalCode, 'The app must exit normally, without harness force-kill').toBeNull();
+  expect(readFileSync(file, 'utf8')).toBe(original);
+});
+
+test('AC5: repeated quit requests keep one prompt and Save all quits once after writing every file', async ({ cod: { page, app }, projects }) => {
+  await addFolder(page, projects.orchard);
+  const files = ['scratch.txt', 'sample.ts'].map(name => path.join(projects.orchard, name));
+  const drafts = ['AC5 repeated quit first draft', 'AC5 repeated quit second draft'];
+  const originals = files.map(file => readFileSync(file, 'utf8'));
+  for (const [index, file] of files.entries()) await modify(page, file, drafts[index]);
+  // Observe the public DOM to catch transient duplicate or replacement dialogs too.
+  const dialogs = await page.evaluateHandle(() => {
+    const state = { added: 0 };
+    const observer = new MutationObserver(records => {
+      for (const record of records) for (const node of record.addedNodes) {
+        if (!(node instanceof Element)) continue;
+        if (node.matches('[data-testid="editor-save-prompt"]')) state.added++;
+        state.added += node.querySelectorAll('[data-testid="editor-save-prompt"]').length;
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    return state;
+  });
+  await app.evaluate(({ app }) => { setTimeout(() => app.quit(), 0); });
+  await expectPrompt(page, ['scratch.txt', 'sample.ts']);
+  const originalPrompt = await prompt(page).elementHandle();
+  expect(originalPrompt).not.toBeNull();
+  for (let request = 0; request < 3; request++) {
+    await app.evaluate(({ app }) => { app.quit(); });
+    await expect(prompt(page)).toHaveCount(1);
+    await expectPrompt(page, ['scratch.txt', 'sample.ts']);
+    expect(await originalPrompt!.evaluate(node => node.isConnected), 'Repeated quit must retain the original prompt').toBe(true);
+  }
+  expect(await dialogs.evaluate(state => state.added), 'Only one multi-file prompt may be created').toBe(1);
+  for (const [index, file] of files.entries()) expect(readFileSync(file, 'utf8')).toBe(originals[index]);
+
+  const exits = { app: 0, window: 0, process: 0, willQuit: 0 };
+  app.on('console', message => {
+    if (message.text() === 'cod-story-17-will-quit') exits.willQuit++;
+  });
+  await app.evaluate(({ app }) => {
+    app.on('will-quit', () => console.log('cod-story-17-will-quit'));
+  });
+  app.on('close', () => exits.app++);
+  page.on('close', () => exits.window++);
+  const appProcess = app.process();
+  appProcess.on('exit', () => exits.process++);
+  await Promise.all([
+    app.waitForEvent('close'),
+    page.keyboard.press('Enter').catch(error => {
+      // The app can exit before Playwright acknowledges the key press.
+      if (!String(error).includes('Target page, context or browser has been closed')) throw error;
+    }),
+  ]);
+  await expect.poll(() => appProcess.exitCode, { message: 'Save all must finish writing and exit after repeated quit requests' }).toBe(0);
+  await expect.poll(() => exits).toEqual({ app: 1, window: 1, process: 1, willQuit: 1 });
+  expect(page.isClosed()).toBe(true);
+  expect(appProcess.signalCode).toBeNull();
+  for (const [index, file] of files.entries()) expect(readFileSync(file, 'utf8')).toBe(drafts[index]);
+});
+
+test('AC2/AC5: quit Save all writes the other file but a read-only target keeps the app and failing edit open', async ({ cod: { page, app }, projects }) => {
+  const firstId = await addFolder(page, projects.orchard);
+  const first = path.join(projects.orchard, 'scratch.txt');
+  const failing = path.join(projects.harbor, 'sample.ts');
+  const original = readFileSync(failing, 'utf8');
+  await modify(page, first, 'AC2 quit saved draft');
+  await page.keyboard.press(newWorkspaceKey);
+  const failingId = await addFolder(page, projects.harbor);
+  await modify(page, failing, 'AC2 quit retained draft');
+  // Leave the successful workspace active to prove the error reveals the other tab.
+  await page.keyboard.press(toPlaywright(keys.previous));
+  await expect(area(page)).toHaveAttribute('data-workspace-id', firstId);
+  const fileMode = statSync(failing).mode & 0o7777;
+  const folderMode = statSync(projects.harbor).mode & 0o7777;
+  try {
+    chmodSync(failing, 0o444);
+    // The atomic writer creates a sibling and renames it. Deny directory writes too.
+    chmodSync(projects.harbor, 0o555);
+    expect(() => accessSync(projects.harbor, constants.W_OK), 'Prerequisite: run as an unprivileged user so the temporary directory is really read-only').toThrow();
+    await app.evaluate(({ app }) => { setTimeout(() => app.quit(), 0); });
+    await expectPrompt(page, ['scratch.txt', 'sample.ts']);
+    await page.keyboard.press('Enter');
+    await expect(prompt(page)).toBeHidden();
+    expect(page.isClosed(), 'A failed quit save must keep the app window alive').toBe(false);
+    expect(app.process().exitCode).toBeNull();
+    expect(app.process().signalCode).toBeNull();
+    expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
+    await expect(workspace(page, firstId)).toBeVisible();
+    await expect(workspace(page, failingId)).toBeVisible();
+    await expect(area(page)).toHaveAttribute('data-workspace-id', failingId);
+    await expect(editorTab(page, failing)).toHaveAttribute('aria-selected', 'true');
+    await expect(area(page).getByTestId('editor-notice')).toContainText(/Could not save sample\.ts: .+/);
+    await expectText(page, 'AC2 quit retained draft');
+    await expect(editorTab(page, failing).getByTestId('editor-unsaved-indicator')).toBeVisible();
+    expect(readFileSync(failing, 'utf8')).toBe(original);
+    await expect.poll(() => readFileSync(first, 'utf8')).toBe('AC2 quit saved draft');
+    await page.keyboard.press(toPlaywright(keys.previous));
+    await expect(area(page)).toHaveAttribute('data-workspace-id', firstId);
+    await openFile(page, first);
+    await expectText(page, 'AC2 quit saved draft');
+    await expect(editorTab(page, first).getByTestId('editor-unsaved-indicator')).toBeHidden();
+  } finally {
+    // Restore permissions even on assertion failure, before the fixture is deleted.
+    chmodSync(projects.harbor, folderMode);
+    chmodSync(failing, fileMode);
+  }
+  await page.keyboard.press(toPlaywright(keys.next));
+  await expect(area(page)).toHaveAttribute('data-workspace-id', failingId);
+  await saveCurrent(page, failing, 'AC2 quit retained draft');
 });
