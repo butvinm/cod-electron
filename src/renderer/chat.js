@@ -135,6 +135,8 @@
     function apply(event) {
       state = reduce(state, event);
       sync();
+      // The process may have moved to another directory between turns.
+      if (['turn-end', 'error', 'interrupted'].includes(event.type)) refreshInfo();
     }
 
     function submit() {
@@ -157,14 +159,16 @@
       submit();
     });
     composer.addEventListener('input', growComposer);
-    element.addEventListener('keydown', event => {
-      if (event.key !== 'Escape' || !state.busy) return;
-      event.preventDefault();
+    // Esc is routed here by the app, wherever focus is in the workspace.
+    // Returns true when a running reply was interrupted.
+    function interrupt() {
+      if (!state.busy) return false;
       chatApi.interrupt(workspaceId).catch(console.error);
-    });
+      return true;
+    }
 
     refreshInfo();
-    return { element, apply, refreshInfo, isBusy: () => state.busy, composer };
+    return { element, apply, refreshInfo, interrupt, isBusy: () => state.busy, composer };
   }
 
   window.Chat = { create };

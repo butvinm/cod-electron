@@ -250,6 +250,13 @@ window.cod.project.onRootsChanged(async ({ workspaceId, roots }) => {
   render();
 });
 
+// Esc interrupts the running reply of the active workspace, wherever focus is in it.
+// Overlays come first: while the file finder is open, Esc only closes it.
+window.addEventListener('keydown', event => {
+  if (event.key !== 'Escape' || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || finder.isOpen()) return;
+  if (chats[state.activeId]?.interrupt()) event.preventDefault();
+}, true);
+
 // Chat events can arrive for any workspace, not only the visible one.
 window.cod.chat.onEvent((workspaceId, event) => chats[workspaceId]?.apply(event));
 
