@@ -2,6 +2,7 @@
 // so it keeps its input and focus while the workbench redraws underneath.
 // Matching happens in the main process; this file only draws the top results.
 (function () {
+  'use strict';
   function create({ container, workspaceId, openFile, restoreFocus }) {
     let overlay = null;
     let input = null;
@@ -133,5 +134,16 @@
     };
   }
 
-  window.FileFinder = { create };
+  // CSS selector for the control that had focus, read from attributes so it still works after
+  // render() replaced the element. Tabs carry their workspace id, so the right tab is found.
+  function focusSelector(previous) {
+    const testid = previous?.dataset?.testid;
+    if (!testid) return null;
+    const workspace = previous.getAttribute('data-workspace-id');
+    return workspace ? `[data-testid="${testid}"][data-workspace-id="${workspace}"]` : `[data-testid="${testid}"]`;
+  }
+
+  const api = { create, focusSelector };
+  if (typeof window !== 'undefined') window.FileFinder = api;
+  if (typeof module !== 'undefined') module.exports = api;
 })();

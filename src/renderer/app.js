@@ -210,8 +210,8 @@ const finder = FileFinder.create({
   restoreFocus(previous) {
     let target = previous;
     if (!target || !target.isConnected) {
-      const testid = previous?.dataset?.testid;
-      target = (testid && root.querySelector(`[data-testid="${testid}"]`)) || root.querySelector('[role="tab"][aria-selected="true"]');
+      const selector = FileFinder.focusSelector(previous);
+      target = (selector && root.querySelector(selector)) || root.querySelector('[role="tab"][aria-selected="true"]');
     }
     target?.focus({ preventScroll: true });
   },

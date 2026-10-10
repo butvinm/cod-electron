@@ -8,6 +8,22 @@ import path from 'node:path';
 const require = createRequire(import.meta.url);
 const { search, matchPositions } = require('../../src/fuzzy.cjs');
 const { walk } = require('../../src/file-index.cjs');
+const { focusSelector } = require('../../src/renderer/file-finder.js');
+
+test('focus after a redraw goes back to the tab the finder was opened from', () => {
+  const fake = (testid, workspace) => ({ dataset: { testid }, getAttribute: name => (name === 'data-workspace-id' ? workspace ?? null : null) });
+  // After a redraw the old elements are gone; the new DOM holds one tab per workspace.
+  const tabs = ['w1', 'w2', 'w3'].map(id => fake('workspace-tab', id));
+  const matches = (element, selector) => {
+    const [, testid, workspace] = /^\[data-testid="([^"]+)"\](?:\[data-workspace-id="([^"]+)"\])?$/.exec(selector);
+    return element.dataset.testid === testid && (!workspace || element.getAttribute('data-workspace-id') === workspace);
+  };
+  const origin = fake('workspace-tab', 'w3');
+  assert.equal(tabs.find(t => matches(t, focusSelector(origin))), tabs[2]);
+  assert.equal(focusSelector(fake('project-add-folder')), '[data-testid="project-add-folder"]');
+  assert.equal(focusSelector({ dataset: {} }), null);
+  assert.equal(focusSelector(null), null);
+});
 
 const entry = rel => ({ rel, lower: rel.toLowerCase() });
 
