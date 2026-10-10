@@ -216,7 +216,6 @@ On Linux with Electron system libraries: `xvfb-run -a npx playwright test tests/
 
 Expected collection: five tests. Return `artifacts/6/run.txt` to QA. All five must fail at the missing-finder assertion before the red baseline is accepted; dependency, launch, fixture or prerequisite failures are not acceptable evidence for story #6.
 
-<<<<<<< ours
 # Story #5 developer handoff
 
 Story: https://github.com/butvinm/cod/issues/5 - Open, edit and save files in editor tabs.
@@ -348,4 +347,3 @@ caffeinate -dimsu npx playwright test tests/e2e/a1-claude-chat.spec.ts --reporte
 ```
 
 Return `artifacts/8/run.txt` to QA for the per-criterion expected-failure verdict. There are eight tests because AC5 has three independent launch scenarios. No files are committed or staged. Developer owns app implementation, the executable hook and the DOM contract; QA retains the acceptance assertions.
->>>>>>> theirs
