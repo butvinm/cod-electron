@@ -3,17 +3,19 @@
 @font-face { font-family: Lilex; font-weight: 700; font-style: normal; src: url("fonts/lilex-latin-700-normal.woff2") format("woff2"); }
 @font-face { font-family: Lilex; font-weight: 400; font-style: italic; src: url("fonts/lilex-latin-400-italic.woff2") format("woff2"); }
 
-/* The workspace area is a column: the editor on top while it has content, the chat below it. */
+/* Chat first: the chat fills the workspace area. While the editor has content it sits on the left, about 60/40, and the chat keeps a usable minimum width. */
+.workbench .workspace-area { flex-direction: row; }
+
 .editor {
   display: none;
   flex-direction: column;
-  flex: 1 1 0;
+  flex: 3 1 0;
   min-height: 0;
   min-width: 0;
 }
 
 .editor.has-content { display: flex; }
-.editor.has-content ~ .claude-chat { flex: 0 0 35%; border-top: 1px solid #363c46; }
+.editor.has-content ~ .claude-chat { flex: 2 1 0; min-width: 320px; border-left: 1px solid #363c46; }
 
 .editor-tabs {
   display: flex;
