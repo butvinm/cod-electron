@@ -43,7 +43,8 @@ contextBridge.exposeInMainWorld('cod', {
   // Editor file access. The main process checks every path against the workspace folders.
   editor: {
     read: (workspaceId, file) => ipcRenderer.invoke('editor:read', workspaceId, file),
-    write: (workspaceId, file, text) => ipcRenderer.invoke('editor:write', workspaceId, file, text),
+    // contents is { text, eol, bom } as returned by read.
+    write: (workspaceId, file, contents) => ipcRenderer.invoke('editor:write', workspaceId, file, contents),
   },
   // Narrow folder API. The main process owns the folder model and all file system access.
   project: {

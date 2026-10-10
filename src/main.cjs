@@ -78,7 +78,7 @@ ipcMain.handle('project:open-file', (_event, workspaceId, file) => {
 
 // Editor file access. Same realpath containment as project reads.
 ipcMain.handle('editor:read', (_event, workspaceId, file) => editorFiles.read(String(workspaceId), file));
-ipcMain.handle('editor:write', (_event, workspaceId, file, text) => { editorFiles.write(String(workspaceId), file, text); });
+ipcMain.handle('editor:write', (_event, workspaceId, file, contents) => { editorFiles.write(String(workspaceId), file, contents); });
 
 function createWindow() {
   const win = new BrowserWindow({

@@ -137,11 +137,10 @@ function create({ parent, onChange }) {
   return {
     // A fresh buffer for one file. Each tab keeps its own state, so undo history survives tab switches.
     stateFor(file, text) {
-      const crlf = text.includes('\r\n');
+      // The main process hands over text with "\n" line breaks and restores the file's own on save.
       const state = EditorState.create({
         doc: text,
         extensions: [
-          crlf ? EditorState.lineSeparator.of('\r\n') : [],
           EditorState.tabSize.of(4),
           indentUnit.of('    '),
           lineNumbers(),
@@ -170,7 +169,7 @@ function create({ parent, onChange }) {
   };
 }
 
-// The text to write to disk: the document with its original line breaks.
+// The document text, with "\n" line breaks.
 function textOf(state) {
   return state.sliceDoc(0, state.doc.length);
 }
