@@ -4,6 +4,7 @@ const { app, BrowserWindow, dialog, ipcMain } = require('electron');
 const { Folders } = require('./folders.cjs');
 const { readDir } = require('./project-fs.cjs');
 const { FileIndex } = require('./file-index.cjs');
+const { EditorFiles } = require('./editor-files.cjs');
 const { createClaudeProvider } = require('./agents/claude.cjs');
 const { Chats } = require('./agents/chats.cjs');
 const { createQuitGuard } = require('./agents/quit-guard.cjs');
@@ -17,6 +18,7 @@ if (process.env.COD_USER_DATA_DIR) {
 if (process.platform === 'linux') app.disableHardwareAcceleration();
 
 const folders = new Folders();
+const editorFiles = new EditorFiles(folders);
 let mainWindow = null;
 
 // Test hook: COD_TEST_PICK_FOLDERS is a JSON array of arrays of paths.
@@ -101,6 +103,10 @@ ipcMain.handle('project:open-file', (_event, workspaceId, file) => {
   if (typeof file !== 'string' || !folders.workspaceContains(String(workspaceId), file)) throw new Error('Not inside a workspace folder');
   dispatchOpenFile(String(workspaceId), file);
 });
+
+// Editor file access. Same realpath containment as project reads.
+ipcMain.handle('editor:read', (_event, workspaceId, file) => editorFiles.read(String(workspaceId), file));
+ipcMain.handle('editor:write', (_event, workspaceId, file, contents) => { editorFiles.write(String(workspaceId), file, contents); });
 
 function createWindow() {
   const win = new BrowserWindow({

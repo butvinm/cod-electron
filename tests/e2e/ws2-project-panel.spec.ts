@@ -76,7 +76,7 @@ function requests(log: string): Array<{ path: string; workspaceId: string }> {
 
 async function expectRequest(page: Page, log: string, file: string, count: number) {
   await expect.poll(() => requests(log).length, 'Real open-file dispatch must be recorded once per activation').toBe(count);
-  const workspaceId = await page.getByRole('tab', { selected: true }).getAttribute('data-workspace-id');
+  const workspaceId = await page.getByTestId('workspace-tab').and(page.locator('[aria-selected="true"]')).getAttribute('data-workspace-id');
   expect(requests(log).at(-1)).toEqual({ path: file, workspaceId });
 }
 

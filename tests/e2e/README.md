@@ -216,6 +216,82 @@ On Linux with Electron system libraries: `xvfb-run -a npx playwright test tests/
 
 Expected collection: five tests. Return `artifacts/6/run.txt` to QA. All five must fail at the missing-finder assertion before the red baseline is accepted; dependency, launch, fixture or prerequisite failures are not acceptable evidence for story #6.
 
+# Story #5 developer handoff
+
+Story: https://github.com/butvinm/cod/issues/5 - Open, edit and save files in editor tabs.
+Criteria source: artifacts/5/issue.md, supplied by the PM offline.
+Branch: tests/5-editor, based on the story #4 tests branch.
+QA owns tests/e2e/c1-editor.spec.ts and tests/fixtures/projects/editor/ and tests/fixtures/zed-editor/.
+Developer owns app code; existing tests, the harness and reference pins remain QA-owned.
+Expected hand-back: implementation PR with unchanged acceptance assertions, run output, documented exceptions and the TypeScript look-check screenshot compared with stock Zed.
+
+## Prerequisites and fixture contract
+
+Reuse stories #3 and #4's real Electron launch, isolated profile and COD_TEST_PICK_FOLDERS contracts.
+Each test creates temporary copies of orchard and harbor, overlays the editor samples, and initializes real git repos.
+The picker queue is [[orchard], [harbor]] using those absolute temporary paths.
+Files open through the real project panel, by selecting a project-entry and pressing Enter, following story #4's documented exception.
+No renderer commands, preopened files or editor-only test renderer are introduced.
+The spec uses project panel mouse selection and keyboard activation, plus the existing workspace keyboard shortcuts.
+
+Story #4's implementation must be available before the story #5 red baseline is measured.
+A failure at the missing project panel or missing fixture row is a prerequisite failure, not evidence that story #5 is missing.
+Every scenario first opens a real fixture file and expects its editor-tab with this assertion message: `Story #5 editor is missing: opening a project file must create an editor tab`.
+The next guard expects an editable buffer: `Story #5 editor is missing: active tab must display an editable buffer`.
+These are intended failure messages, not measured output.
+
+## Additional data-testid selectors
+
+| Selector | Required meaning |
+| --- | --- |
+| editor-tab | Each visible active-workspace editor tab, with role=tab, aria-selected=true or false, and absolute data-path |
+| editor-tab-label | Basename only inside each editor-tab |
+| editor-surface | Active editor background surface inside workspace-area |
+| editor-content | The active editable content node inside workspace-area; focusable; innerText contains source lines without gutters, labels or placeholder text |
+| editor-syntax-token | Actual highlighted source text inside editor-content; data-syntax-token names its category in the pinned One Dark syntax map |
+| editor-unsaved-indicator | Visible modified-state indicator inside the relevant editor-tab, hidden or absent for clean buffers; its exact appearance awaits the Zed reference |
+| editor-save-prompt | Proposed real close-confirmation dialog, with keyboard-reachable Save, Discard and Cancel buttons; exact Zed/native parity awaits the reference |
+
+Only the active workspace's editor tabs and active buffer belong in the visible workspace-area.
+Exactly one editor tab is selected when files are open.
+editor-content is the real editable node, not a mirrored test-only element.
+Text geometry is read from its DOM to double-click the first word without assuming a font size.
+Markers and attributes describe visible production state and must not substitute for syntax highlighting, editing or saving.
+Do not attach a size or style to the unsaved indicator based on a guessed Zed default.
+The save-prompt contract is provisional pending the offline reference question; a native prompt needs a QA-approved dialog hook instead of an untestable DOM contract.
+
+## Coverage and unresolved parity
+
+| AC | Automated scenario |
+| --- | --- |
+| AC1 | Open all seven sample languages; verify source text, tab label, editor background and foreground and at least two distinct syntax colors from the pinned One Dark theme; attach TypeScript screenshot |
+| AC2 | Type, undo/redo, Shift with all four arrows, double-click word selection, copy/cut/paste, select all, line moves up/down and TypeScript comment toggle |
+| AC3 | Clean and modified indicator states, unchanged disk before save, exact real disk contents after save, indicator cleared |
+| AC4 | Existing-file focus without duplicate tab, close clean active tab, keyboard Cancel preserves draft, Discard preserves disk and loses draft, Save writes disk and closes; reopen confirms persisted contents |
+| AC5 | Two workspaces with different tab sets; switch twice each way; restore active file and drafts including an inactive tab's edits; disk stays unchanged |
+
+Pinned colors, binding actions, versioned source URLs and open questions are recorded in [the story #5 Zed reference](../fixtures/zed-editor/README.md).
+The offline settings pin does not contain a verified default buffer font size, so that part of AC1 has no assertion yet.
+Unsaved-indicator appearance, preview defaults and save-prompt defaults also remain unverified.
+The prompt test asserts the story's three outcomes using Tab and Enter without inventing Zed's button order or mnemonics.
+No complete Zed parity PASS may be reported until these questions are resolved and the necessary assertions or visual evidence are added.
+The TypeScript screenshot is an initial look check, not a validated stakeholder clip.
+
+## Run story #5 outside the sandbox
+
+No Electron or browser process was launched during test authoring.
+Install locked dependencies and ensure stories #3 and #4 are implemented and any required build has completed first.
+From the worktree root on macOS:
+
+```sh
+mkdir -p artifacts/5
+caffeinate -dimsu npx playwright test tests/e2e/c1-editor.spec.ts --reporter=list > artifacts/5/run.txt 2>&1
+```
+
+Linux equivalent with Electron libraries installed: `xvfb-run -a npx playwright test tests/e2e/c1-editor.spec.ts --reporter=list > artifacts/5/run.txt 2>&1`.
+Return artifacts/5/run.txt to QA to confirm five expected editor failures and reject prerequisite or test failures.
+No commit or PR was created; the story #5 files remain uncommitted as requested.
+
 # Story #8 developer handoff
 
 Story: #8 - Claude chat in a workspace. Tests: `tests/e2e/a1-claude-chat.spec.ts`. Fake: `tests/fakes/claude/claude` and its scenario JSON files. QA owns those files and this contract. No app implementation is included.
