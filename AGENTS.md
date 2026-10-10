@@ -32,7 +32,9 @@ Bugs and "Report problem" folders follow `report-problem`: reproduce as a failin
 - The stakeholder and the PM meet when the stakeholder opens the PM session, at most once a day by default: demo and accept/reject, escalations, next pick. The agenda is in `plan-iteration`.
 - Between meetings the team works on its own from the ranked queue (a pinned `Queue` issue). The PM decides technical questions and product details that fit `docs/vision.md`.
 - Only these go to the stakeholder, as an issue labeled `stakeholder` with a default answer: a change to the vision or scope, spending money, anything public about the stakeholder or their employer, and anything that cannot be undone. Work continues on everything not blocked.
-- Obligations: whatever the PM says will be ready by the next meeting is either delivered or comes with a written reason and the next step. The stakeholder accepts or rejects at the meeting.
+- Obligations: whatever the PM says will be ready by the next meeting is either delivered or comes with a written reason and the next step. Each obligation is a list of numbered checks the stakeholder can verify in a few minutes, plus a "not included" list. The stakeholder accepts or rejects at the meeting.
+- Obligations are a minimum. When something gets unblocked early, keep going and present the result at the next meeting, not the news.
+- Minutes of each meeting live in `docs/meetings/<date>.md` (local, never published): previous obligations met or missed with evidence, numbered decisions, accepted and rejected work, new obligations, open questions with defaults.
 
 ## Handoffs and reports
 
@@ -79,7 +81,8 @@ Role definitions live in `.claude/agents/`. The PM starts the developer as a Cla
 
 - Minimal UI, very few settings. Behavior changes by editing code.
 - Everything works from the keyboard, with a command palette.
-- It should look and feel like Zed: fast, quiet, few panels.
+- It should look and feel like Zed: fast, quiet, few panels. The reference is stock Zed 1.23.2 with default settings and the default keymap. Where Zed has a feature, Cod behaves the same; a difference is a bug unless the story lists it as an exception.
+- Cod is a plain good IDE plus its own small set: agent chats, review, `codctl` and workspaces. Nothing from one person's setup (keymap, settings, workflow) is built in.
 - Small codebase, clear modules, few dependencies, tests for the core.
 
 ## Text rules (all files, commits, issues, PRs)
