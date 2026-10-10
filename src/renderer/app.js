@@ -215,11 +215,13 @@ const showWorkspace = id => update(activate(state, id));
 
 // Modified files are asked about first. Cancel or a failed save keeps the workspace.
 async function closeWorkspace(id) {
-  if (await editor.confirmClose([id], showWorkspace)) update(close(state, id));
+  if (await guarded(() => editor.confirmClose([id], showWorkspace))) update(close(state, id));
 }
 
+const guarded = confirm => EditorTabs.confirmOrKeep(confirm, message => editor.notify(message));
+
 // Quitting asks about the modified files of every workspace before the main process cleans up the chats.
-window.cod.onQuitRequest(() => editor.confirmClose(state.workspaces.map(w => w.id), showWorkspace));
+window.cod.onQuitRequest(() => guarded(() => editor.confirmClose(state.workspaces.map(w => w.id), showWorkspace)));
 
 function togglePanel() {
   const ps = panelOf(state.activeId);

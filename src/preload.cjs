@@ -43,8 +43,9 @@ contextBridge.exposeInMainWorld('cod', {
   // The main process asks before quitting. The callback resolves true when quitting may go on.
   onQuitRequest(callback) {
     ipcRenderer.on('quit:ask', async (_event, id) => {
-      let answer = true;
-      try { answer = await callback(); } catch (error) { console.error(error); }
+      // Any failure keeps the app open: only an explicit true lets the quit go on.
+      let answer = false;
+      try { answer = (await callback()) === true; } catch (error) { console.error(error); }
       ipcRenderer.send('quit:answer', id, answer);
     });
   },

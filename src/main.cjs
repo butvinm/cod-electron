@@ -150,7 +150,7 @@ function askPageToQuit() {
       win.removeListener('closed', onClosed);
       resolve(answer);
     };
-    const onAnswer = (_event, answerId, answer) => { if (answerId === id) finish(answer !== false); };
+    const onAnswer = (_event, answerId, answer) => { if (answerId === id) finish(answer === true); };
     const onClosed = () => finish(true);
     ipcMain.on('quit:answer', onAnswer);
     win.once('closed', onClosed);
@@ -158,9 +158,7 @@ function askPageToQuit() {
   });
 }
 
-app.on('before-quit', event => {
-  if (quitConfirmed) return chatQuitGuard(event);
-  event.preventDefault();
+function requestQuit() {
   if (askingToQuit) return;
   askingToQuit = true;
   askPageToQuit().then(ok => {
@@ -168,6 +166,21 @@ app.on('before-quit', event => {
     if (!ok) return;
     quitConfirmed = true;
     app.quit();
+  });
+}
+
+app.on('before-quit', event => {
+  if (quitConfirmed) return chatQuitGuard(event);
+  event.preventDefault();
+  requestQuit();
+});
+
+// Closing the only window quits the app, so it asks the same way, before the window is destroyed.
+app.on('browser-window-created', (_event, win) => {
+  win.on('close', event => {
+    if (quitConfirmed) return;
+    event.preventDefault();
+    requestQuit();
   });
 });
 

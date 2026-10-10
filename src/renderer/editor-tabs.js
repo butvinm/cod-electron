@@ -70,7 +70,17 @@
     }
   }
 
-  const api = { createTabs, open, activate, close, displayPath, moveChoice, errorMessage, attemptSave };
+  // Runs a confirmation that guards data. Any error means "do not go on": it reports the reason and resolves false.
+  async function confirmOrKeep(confirm, report) {
+    try {
+      return (await confirm()) === true;
+    } catch (error) {
+      report(`Could not check for unsaved files: ${errorMessage(error)}`);
+      return false;
+    }
+  }
+
+  const api = { createTabs, open, activate, close, displayPath, moveChoice, errorMessage, attemptSave, confirmOrKeep };
   if (typeof module !== 'undefined') module.exports = api;
   else root.EditorTabs = api;
 })(globalThis);

@@ -50,6 +50,7 @@ const Editor = (function () {
     let current = null;         // the workspace being shown
     let shown = null;           // { workspaceId, file, buffer } loaded in the view
     let prompt = null;          // { close(choiceId) } while the save prompt is open
+    let saving = false;         // true while Save all writes, so closes wait
 
     const space = id => {
       if (!spaces.has(id)) spaces.set(id, { tabs: createTabs(), buffers: new Map() });
@@ -227,7 +228,7 @@ const Editor = (function () {
     }
 
     async function requestClose(workspaceId, file) {
-      if (prompt) return;
+      if (prompt || saving) return;
       const s = space(workspaceId);
       const buffer = s.buffers.get(file);
       if (!buffer) return;
@@ -254,7 +255,7 @@ const Editor = (function () {
     // On Cancel or a failed save it resolves false. A failure first calls showWorkspace(id) and
     // then activates the failing tab and shows its error, so the user sees what went wrong.
     async function confirmClose(workspaceIds, showWorkspace) {
-      if (prompt) return false;
+      if (prompt || saving) return false;
       const entries = [];
       for (const workspaceId of workspaceIds) {
         const s = spaces.get(workspaceId);
@@ -266,6 +267,24 @@ const Editor = (function () {
       const choice = await askToSaveAll(entries);
       if (choice === 'discard') return true;
       if (choice === 'save') {
+        saving = true;
+        try { return await saveEntries(entries, showWorkspace); } finally { saving = false; }
+      }
+      if (before && before.isConnected) before.focus();
+      else if (shown) view.focus();
+      return false;
+    }
+
+    // True only when every listed file is on disk and still unmodified, so edits made during a write are never dropped.
+    async function saveEntries(entries, showWorkspace) {
+      const reveal = (workspaceId, file, message) => {
+        space(workspaceId).tabs = activateTab(space(workspaceId).tabs, file);
+        showWorkspace(workspaceId);
+        sync();
+        report(message);
+        view.focus();
+      };
+      {
         for (const { workspaceId, file } of entries) {
           const buffer = spaces.get(workspaceId)?.buffers.get(file);
           if (!buffer || !buffer.dirty) continue;
@@ -282,23 +301,22 @@ const Editor = (function () {
             },
           });
           if (ok) continue;
-          space(workspaceId).tabs = activateTab(space(workspaceId).tabs, file);
-          showWorkspace(workspaceId);
-          sync();
-          report(message);
-          view.focus();
+          reveal(workspaceId, file, message);
+          return false;
+        }
+        for (const { workspaceId, file } of entries) {
+          if (!spaces.get(workspaceId)?.buffers.get(file)?.dirty) continue;
+          reveal(workspaceId, file, `${basename(file)} changed while saving. Close again to review it.`);
           return false;
         }
         return true;
       }
-      if (before && before.isConnected) before.focus();
-      else if (shown) view.focus();
-      return false;
     }
 
     return {
       element,
       confirmClose,
+      notify: report,
       open,
       save,
       closeActive() {

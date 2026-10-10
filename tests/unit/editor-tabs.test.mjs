@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 
-const { createTabs, open, activate, close, displayPath, moveChoice, errorMessage, attemptSave } = createRequire(import.meta.url)('../../src/renderer/editor-tabs.js');
+const { createTabs, open, activate, close, displayPath, moveChoice, errorMessage, attemptSave, confirmOrKeep } = createRequire(import.meta.url)('../../src/renderer/editor-tabs.js');
 
 const opened = (...files) => files.reduce(open, createTabs());
 
@@ -86,4 +86,17 @@ test('moveChoice wraps both ways', () => {
   assert.equal(moveChoice(0, -1, 3), 2);
   assert.equal(moveChoice(2, 1, 3), 0);
   assert.equal(moveChoice(0, 1, 3), 1);
+});
+
+test('a confirmation that fails keeps the app open and reports the reason', async () => {
+  const messages = [];
+  assert.equal(await confirmOrKeep(async () => { throw new Error('boom'); }, m => messages.push(m)), false);
+  assert.deepEqual(messages, ['Could not check for unsaved files: boom']);
+});
+
+test('only an explicit yes lets the confirmation go on', async () => {
+  const report = () => assert.fail('no report expected');
+  assert.equal(await confirmOrKeep(async () => true, report), true);
+  assert.equal(await confirmOrKeep(async () => false, report), false);
+  assert.equal(await confirmOrKeep(async () => undefined, report), false);
 });
