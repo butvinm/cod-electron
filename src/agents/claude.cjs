@@ -99,6 +99,9 @@ function createClaudeProvider({ bin = process.env.COD_CLAUDE_BIN || 'claude', en
     child.on('error', error => {
       if (!alive) return;
       alive = false;
+      timers.forEach(clearTimeout);
+      denyAll('The Claude session ended.');
+      if (registration) registration.unregister();
       const missing = error.code === 'ENOENT';
       emit({
         type: 'error',
@@ -175,7 +178,7 @@ function createClaudeProvider({ bin = process.env.COD_CLAUDE_BIN || 'claude', en
     };
   }
 
-  return { start, ready: host.ready, close: () => host.close() };
+  return { start, ready: host.ready, endpointCount: () => host.count(), close: () => host.close() };
 }
 
 module.exports = { createClaudeProvider, childEnv, CREDENTIAL_NAME, STREAMING_FLAGS };

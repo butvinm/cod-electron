@@ -1,11 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import http from 'node:http';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const { createPermissionHost } = require('../../src/agents/permission-host.cjs');
 const { Chats } = require('../../src/agents/chats.cjs');
-const { createChat, reduce, statusOf, permissionText } = require('../../src/renderer/chat-model.js');
+const { createClaudeProvider } = require('../../src/agents/claude.cjs');
+const { createChat, reduce, statusOf, permissionText, queueHint, promptFocusTarget } = require('../../src/renderer/chat-model.js');
 
 async function rpc(url, body) {
   const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -73,7 +75,66 @@ test('chat model: a pending request means needs input and every turn ending clea
   assert.equal(statusOf(state), 'Needs input');
   assert.equal(permissionText(state.permission.input), 'ls');
   assert.equal(reduce(state, { type: 'permission-clear', id: 'other' }).permission.id, 'a');
-  assert.equal(reduce(state, { type: 'permission-answered' }).permission, null);
+  assert.equal(reduce(state, { type: 'permission-answered', id: 'a' }).permission, null);
   for (const type of ['turn-end', 'interrupted', 'error']) assert.equal(reduce(state, { type }).permission, null);
   assert.equal(statusOf(createChat()), 'Ready');
+});
+
+test('chat model: requests queue in order and needs input lasts until the queue is empty', () => {
+  const ask = (state, id) => reduce(state, { type: 'permission-request', id, tool: 'Bash', input: { command: id } });
+  let state = ask(ask(ask(createChat(), 'a'), 'b'), 'c');
+  assert.equal(state.permission.id, 'a');
+  assert.equal(queueHint(state.permissions.length), '1 of 3');
+  state = reduce(state, { type: 'permission-answered', id: 'a' });
+  assert.equal(state.permission.id, 'b');
+  assert.equal(statusOf(state), 'Needs input');
+  state = reduce(state, { type: 'permission-clear', id: 'c' });
+  assert.equal(queueHint(state.permissions.length), '');
+  state = reduce(state, { type: 'permission-clear', id: 'b' });
+  assert.equal(state.permission, null);
+  assert.equal(statusOf(state), 'Ready');
+  assert.deepEqual(reduce(ask(ask(createChat(), 'a'), 'b'), { type: 'turn-end' }).permissions, []);
+});
+
+test('chat model: focus goes to the current choice, or to the denial form when it is open', () => {
+  assert.deepEqual(promptFocusTarget({ denying: true, choice: 1, count: 3 }), { kind: 'reason' });
+  assert.deepEqual(promptFocusTarget({ denying: false, choice: 2, count: 3 }), { kind: 'choice', index: 2 });
+  assert.deepEqual(promptFocusTarget({ denying: false, choice: 9, count: 3 }), { kind: 'choice', index: 2 });
+  assert.deepEqual(promptFocusTarget({ denying: false, choice: undefined, count: 3 }), { kind: 'choice', index: 0 });
+});
+
+function raw(url, headers) {
+  const target = new URL(url);
+  return new Promise((resolve, reject) => {
+    const req = http.request({ host: '127.0.0.1', port: target.port, path: target.pathname, method: 'POST', headers: { 'Content-Type': 'application/json', ...headers } }, res => {
+      res.resume();
+      res.on('end', () => resolve(res.statusCode));
+    });
+    req.on('error', reject);
+    req.end(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' }));
+  });
+}
+
+test('permission host: a hostile Origin is refused, no Origin passes, a wrong Host is refused', async () => {
+  const host = createPermissionHost();
+  await host.ready;
+  const registration = host.register(async () => ({ behavior: 'deny', message: 'x' }));
+  const url = JSON.parse(registration.config).mcpServers.cod.url;
+  assert.equal(await raw(url, {}), 200);
+  assert.equal(await raw(url, { Origin: 'https://evil.example' }), 403);
+  assert.equal(await raw(url, { Origin: 'null' }), 403);
+  assert.equal(await raw(url, { Origin: `http://localhost:${host.port}` }), 200);
+  assert.equal(await raw(url, { Host: 'evil.example' }), 404);
+  await host.close();
+});
+
+test('claude provider: a spawn failure unregisters the permission endpoint', async () => {
+  const provider = createClaudeProvider({ bin: '/nonexistent/cod-claude' });
+  await provider.ready;
+  const events = [];
+  provider.start({ cwd: process.cwd(), onEvent: event => events.push(event.type), onExit: () => {} });
+  await new Promise(resolve => setTimeout(resolve, 300));
+  assert.ok(events.includes('error'));
+  assert.equal(provider.endpointCount(), 0);
+  await provider.close();
 });

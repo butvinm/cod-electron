@@ -3,7 +3,7 @@
 // The Claude process lives in the main process; this file only draws events and sends keys.
 (function () {
   'use strict';
-  const { createChat, reduce, toolTarget, toolInputText, splitBlocks, statusOf, permissionText } = window.ChatModel;
+  const { createChat, reduce, toolTarget, toolInputText, splitBlocks, statusOf, permissionText, queueHint, promptFocusTarget } = window.ChatModel;
 
   function node(tag, props = {}, ...kids) {
     const n = document.createElement(tag);
@@ -121,10 +121,13 @@
     let reasonBox = null;
     let reasonInput = null;
 
+    let lastChoice = 0;
+    let countHint = null;
+
     function answer(allow, scope, message) {
       const id = shownId;
       chatApi.permission(workspaceId, id, { allow, scope, message }).catch(console.error);
-      apply({ type: 'permission-answered' });
+      apply({ type: 'permission-answered', id });
     }
 
     function showDenial(on) {
@@ -132,6 +135,14 @@
       choiceBox.hidden = on;
       reasonBox.hidden = !on;
       if (on) reasonInput.focus(); else choices[0].focus();
+    }
+
+    // Moves the focus to the prompt's current choice, or to the denial form when it is open.
+    function focusPrompt() {
+      if (!state.permission || shownId === null) return false;
+      const target = promptFocusTarget({ denying, choice: lastChoice, count: choices.length });
+      (target.kind === 'reason' ? reasonInput : choices[target.index]).focus();
+      return true;
     }
 
     function buildPrompt(request) {
@@ -142,6 +153,9 @@
       forSession.addEventListener('click', () => answer(true, 'session'));
       deny.addEventListener('click', () => showDenial(true));
       choices = [once, forSession, deny];
+      lastChoice = 0;
+      choices.forEach((choice, index) => choice.addEventListener('focus', () => { lastChoice = index; }));
+      countHint = node('span', { class: 'chat-permission-count' });
       choiceBox = node('div', { class: 'chat-permission-choices' }, ...choices);
       reasonInput = node('input', { type: 'text', class: 'chat-permission-reason', 'aria-label': 'Denial reason', placeholder: 'Reason (optional)', spellcheck: 'false' });
       const send = node('button', { type: 'button', class: 'chat-permission-choice', text: 'Send denial' });
@@ -152,7 +166,7 @@
       const hint = node('div', { class: 'chat-permission-hint' },
         node('kbd', { text: 'Enter' }), ' allows once, ', node('kbd', { text: 'S' }), ' allows for this session, ', node('kbd', { text: 'Esc' }), ' denies');
       promptBox.replaceChildren(
-        node('div', { class: 'chat-permission-title' }, 'Claude wants to use ', node('strong', { class: 'chat-permission-tool', text: request.tool })),
+        node('div', { class: 'chat-permission-title' }, 'Claude wants to use ', node('strong', { class: 'chat-permission-tool', text: request.tool }), ' ', countHint),
         node('pre', { class: 'chat-permission-input', text: permissionText(request.input) }),
         choiceBox, reasonBox, hint);
     }
@@ -168,14 +182,23 @@
         if (hadFocus) composer.focus();
         return;
       }
-      if (shownId === request.id) return;
+      if (shownId === request.id) {
+        countHint.textContent = queueHint(state.permissions.length);
+        return;
+      }
       shownId = request.id;
       buildPrompt(request);
+      countHint.textContent = queueHint(state.permissions.length);
       promptBox.hidden = false;
       // A prompt takes the focus unless the person is working somewhere else.
       const active = document.activeElement;
       if (!active || active === document.body || element.contains(active)) choices[0].focus();
     }
+
+    // Focus entering the chat (composer, pane) while a prompt waits goes to the prompt, so Enter never reaches the busy composer.
+    element.addEventListener('focusin', event => {
+      if (state.permission && !promptBox.contains(event.target)) focusPrompt();
+    });
 
     promptBox.addEventListener('keydown', event => {
       if (event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return;
@@ -262,7 +285,7 @@
     }
 
     refreshInfo();
-    return { element, apply, refreshInfo, interrupt, hasPermission: () => state.permission !== null, isBusy: () => state.busy, composer };
+    return { element, apply, refreshInfo, interrupt, hasPermission: () => state.permission !== null, focusPrompt, isBusy: () => state.busy, composer };
   }
 
   window.Chat = { create };

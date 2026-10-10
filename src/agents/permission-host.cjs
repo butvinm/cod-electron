@@ -70,6 +70,9 @@ function createPermissionHost() {
       res.writeHead(status, { 'Content-Type': 'application/json' });
       res.end(body === undefined ? undefined : JSON.stringify(body));
     };
+    // A browser page sends an Origin header; the CLI does not. Only a local origin passes.
+    const origin = req.headers.origin;
+    if (origin !== undefined && !new RegExp(`^http://(127\\.0\\.0\\.1|localhost)(:${port})?$`).test(origin)) return send(403);
     if (!token || !handlers.has(token) || req.headers.host !== `127.0.0.1:${port}`) return send(404);
     if (req.method !== 'POST') return send(405);
     const chunks = [];
@@ -101,6 +104,7 @@ function createPermissionHost() {
   return {
     ready,
     get port() { return port; },
+    count: () => handlers.size,
     // Registers a handler for one Claude process. Returns the MCP config for it, or null
     // when the server is not listening.
     register(handler) {

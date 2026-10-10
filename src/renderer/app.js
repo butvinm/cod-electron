@@ -196,7 +196,8 @@ function render() {
 function update(next) {
   const gone = state.workspaces.filter(w => !next.workspaces.some(n => n.id === w.id));
   // The finder searches one workspace, so switching or closing one closes it.
-  if (next.activeId !== state.activeId) finder.close();
+  const switched = next.activeId !== state.activeId;
+  if (switched) finder.close();
   state = next;
   for (const ws of gone) {
     delete panels[ws.id];
@@ -206,6 +207,8 @@ function update(next) {
     window.cod.project.forget(ws.id).catch(console.error);
   }
   render();
+  // Switching to a chat with a waiting permission prompt puts the focus on the prompt.
+  if (switched) chats[state.activeId]?.focusPrompt();
 }
 
 function togglePanel() {
