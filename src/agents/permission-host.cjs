@@ -54,7 +54,7 @@ function createPermissionHost() {
       const handler = handlers.get(token);
       let answer;
       try {
-        answer = await handler({ tool_name: args.tool_name, input: args.input, tool_use_id: args.tool_use_id }, signal);
+        answer = await handler({ tool_name: args.tool_name, input: args.input, tool_use_id: args.tool_use_id, rpcId: id }, signal);
       } catch {
         answer = { behavior: 'deny', message: 'Cod could not ask for permission.' };
       }

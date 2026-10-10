@@ -40,6 +40,7 @@ function childEnv(source) {
 // Shutdown is bounded: SIGINT (interrupt only), SIGTERM, SIGKILL, then the session is
 // declared over even if the operating system never confirms the exit.
 const INTERRUPT_GRACE_MS = 1500;
+const ARRIVAL_WINDOW_MS = 30;
 
 function createClaudeProvider({ bin = process.env.COD_CLAUDE_BIN || 'claude', env = process.env, graceMs = INTERRUPT_GRACE_MS } = {}) {
   // Permission requests arrive through a small local MCP server (see permission-host.cjs).
@@ -57,8 +58,18 @@ function createClaudeProvider({ bin = process.env.COD_CLAUDE_BIN || 'claude', en
         if (permissions.delete(id)) emit({ type: 'permission-clear', id });
         resolve({ behavior: 'deny', message: 'The request was cancelled.' });
       });
-      emit({ type: 'permission-request', id, tool: request.tool_name, input: request.input });
+      // Concurrent calls can reach the server out of order. Requests that arrive within a
+      // few milliseconds are shown in the order Claude made them (JSON-RPC ids increase).
+      arrivals.push({ id, rpcId: request.rpcId, tool: request.tool_name, input: request.input });
+      if (!flushTimer) flushTimer = setTimeout(flushArrivals, ARRIVAL_WINDOW_MS);
     }));
+    let flushTimer = null;
+    const arrivals = [];
+    function flushArrivals() {
+      flushTimer = null;
+      const batch = arrivals.splice(0).sort((a, b) => (typeof a.rpcId === 'number' && typeof b.rpcId === 'number' ? a.rpcId - b.rpcId : 0));
+      for (const { id, tool, input } of batch) if (permissions.has(id)) emit({ type: 'permission-request', id, tool, input });
+    }
     if (registration) args.push('--mcp-config', registration.config, '--permission-prompt-tool', registration.tool);
     const denyAll = message => {
       for (const entry of permissions.values()) entry.resolve({ behavior: 'deny', message });
