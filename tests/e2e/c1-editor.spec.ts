@@ -73,9 +73,10 @@ async function openFile(page: Page, file: string) {
   await buffer(page).focus();
 }
 
-const normalized = (text: string) => text.replace(/\r\n/g, '\n').replace(/\n$/, '');
+const normalized = (text: string) => text.replace(/\r\n/g, '\n');
 async function expectText(page: Page, text: string) {
-  await expect.poll(async () => normalized(await buffer(page).innerText())).toBe(normalized(text));
+  // A trailing newline is represented by a final empty .cm-line.
+  await expect.poll(async () => normalized(await buffer(page).locator('.cm-line').evaluateAll(lines => lines.map(line => line.textContent ?? '').join('\n')))).toBe(normalized(text));
 }
 
 async function replace(page: Page, text: string) {
