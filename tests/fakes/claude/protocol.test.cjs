@@ -10,6 +10,7 @@ const { spawn } = require('node:child_process');
 const peer = `
 const readline = require('node:readline');
 const fs = require('node:fs');
+const batch = [];
 readline.createInterface({ input: process.stdin }).on('line', line => {
   const request = JSON.parse(line);
   fs.appendFileSync(process.env.PEER_LOG, line + '\\n');
@@ -22,7 +23,11 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
     const answer = process.env.ANSWER === 'deny' ? { behavior: 'deny', message: 'Do not run "printf"\\nKeep fixture unchanged.' } : { behavior: 'allow', updatedInput: request.params.arguments.input };
     result = { content: [{ type: 'text', text: JSON.stringify(answer) }] };
   } else throw new Error('Unexpected method');
-  process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }) + '\\n');
+  const response = JSON.stringify({ jsonrpc: '2.0', id: request.id, result }) + '\\n';
+  if (process.env.BATCH === 'true' && request.method === 'tools/call') {
+    batch.push(response);
+    if (batch.length === 2) process.stdout.write(batch.join(''));
+  } else process.stdout.write(response);
 });`;
 
 async function run(t, scenario, permission, configFile = false, prompts = 1) {
@@ -33,7 +38,7 @@ async function run(t, scenario, permission, configFile = false, prompts = 1) {
   const log = path.join(dir, 'claude.jsonl');
   const peerLog = path.join(dir, 'peer.jsonl');
   const server = path.join(dir, 'server.cjs'); fs.writeFileSync(server, peer);
-  const config = { mcpServers: { fixture: { command: process.execPath, args: [server], env: { PEER_LOG: peerLog, ANSWER: permission } } } };
+  const config = { mcpServers: { fixture: { command: process.execPath, args: [server], env: { PEER_LOG: peerLog, ANSWER: permission, BATCH: String(scenario === 'permissions-queued') } } } };
   const configPath = path.join(dir, 'mcp.json'); fs.writeFileSync(configPath, JSON.stringify(config));
   const argv = ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--include-partial-messages'];
   if (permission) argv.push('--permission-prompt-tool', 'mcp__fixture__approve', '--mcp-config', configFile ? configPath : JSON.stringify(config));
@@ -88,4 +93,24 @@ for (const configFile of [false, true]) for (const behavior of ['allow', 'deny']
   assert.ok(requestIndex < answerIndex);
   if (behavior === 'allow') assert.ok(answerIndex < toolIndex);
   assert.equal(result.records.filter(record => record.kind === 'stdin').length, 2);
+});
+
+
+test('queued permissions send two distinct MCP calls before either answer in one turn', async t => {
+  // The peer withholds both answers until both calls arrive. Sequential calls time out.
+  const result = await run(t, 'permissions-queued', 'allow');
+  assert.equal(result.code, 0, result.stderr);
+  const requests = result.records.filter(record => record.kind === 'permission-request');
+  const expected = [
+    { tool_name: 'Bash', input: { command: 'printf cod-permission-fixture' } },
+    { tool_name: 'Bash', input: { command: 'printf cod-permission-second' } },
+  ];
+  assert.deepEqual(requests.map(record => record.request), expected);
+  assert.deepEqual(result.records.filter(record => record.kind === 'permission-answer').map(record => record.request), expected);
+  const firstAnswer = result.records.findIndex(record => record.kind === 'permission-answer');
+  const secondRequest = result.records.indexOf(requests[1]);
+  assert.ok(secondRequest < firstAnswer, 'Both requests must arrive before the first answer');
+  assert.equal(result.records.filter(record => record.kind === 'turn').length, 1);
+  assert.equal(result.records.filter(record => record.kind === 'tool-run').length, 2);
+  assert.equal(result.wire.filter(event => event.type === 'result').length, 1);
 });

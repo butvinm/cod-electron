@@ -1,4 +1,5 @@
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { Page } from '@playwright/test';
@@ -10,20 +11,26 @@ const credential = /^(?:ANTHROPIC_.*(?:KEY|TOKEN|SECRET)|CLAUDE_.*(?:KEY|TOKEN|S
 type RecordLine = {
   kind: string; tool?: string; localTool?: string; request?: typeof request;
   answer?: { behavior: string; updatedInput?: typeof request.input; message?: string };
-  argv?: string[]; line?: string; transport?: string; tool_name?: string; input?: typeof request.input;
+  argv?: string[]; line?: string; transport?: string; name?: string; tool_name?: string; input?: typeof request.input;
 };
-type Fake = { records: () => RecordLine[] };
-const test = base.extend<{ fake: Fake }>({
-  fake: [async ({}, use, testInfo) => {
+type Fake = { records: () => RecordLine[]; folder: string; release: (name: string) => void };
+const test = base.extend<{ fake: Fake; fakeScenario: string }>({
+  fakeScenario: ['permissions', { option: true }],
+  fake: [async ({ fakeScenario }, use, testInfo) => {
     const directory = mkdtempSync(path.join(tmpdir(), 'cod-story-9-'));
     const log = path.join(directory, 'claude.jsonl');
     const gates = path.join(directory, 'gates');
     mkdirSync(gates);
+    const folder = path.join(directory, 'project');
+    mkdirSync(folder);
+    writeFileSync(path.join(folder, 'fixture.txt'), 'Invented permission focus fixture.\n');
+    execFileSync('git', ['init', '--quiet', '--initial-branch=main', folder]);
     const overrides: Record<string, string | undefined> = {
       COD_CLAUDE_BIN: path.join(root, 'tests/fakes/claude/claude'),
       COD_FAKE_CLAUDE_LOG: log,
       COD_FAKE_CLAUDE_GATES: gates,
-      COD_FAKE_CLAUDE_SCENARIO: 'permissions',
+      COD_FAKE_CLAUDE_SCENARIO: fakeScenario,
+      COD_TEST_PICK_FOLDERS: JSON.stringify([[folder]]),
     };
     for (const name of Object.keys(process.env)) if (credential.test(name)) overrides[name] = undefined;
     const previous = new Map(Object.keys(overrides).map(name => [name, process.env[name]]));
@@ -31,7 +38,7 @@ const test = base.extend<{ fake: Fake }>({
       if (value === undefined) delete process.env[name]; else process.env[name] = value;
     }
     const records = () => existsSync(log) ? readFileSync(log, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line) as RecordLine) : [];
-    try { await use({ records }); }
+    try { await use({ records, folder, release: name => writeFileSync(path.join(gates, name), 'release') }); }
     finally {
       // Invented inputs only. Preserve evidence before deleting the isolated fixture.
       if (existsSync(log)) await testInfo.attach('permission-protocol-log', { body: readFileSync(log), contentType: 'application/x-ndjson' });
@@ -234,4 +241,97 @@ test('AC5: configured local MCP permission tool receives request and answers wit
   expect(stdin).toHaveLength(1);
   expect(stdin[0]).toMatchObject({ type: 'user', message: { role: 'user', content: 'Run the invented permission fixture command' } });
   expect(fake.records().filter(record => record.kind === 'error' || record.kind === 'permission-host-missing')).toHaveLength(0);
+});
+
+
+test.describe('permission queue', () => {
+  test.use({ fakeScenario: 'permissions-queued' });
+
+  test('AC1/AC4: two back-to-back requests stay needs input until both are answered', async ({ cod: { page }, fake }) => {
+    await pending(page);
+    const second = { tool_name: 'Bash', input: { command: 'printf cod-permission-second' } };
+    await expect.poll(() => fake.records().filter(record => record.kind === 'permission-request').map(record => record.request)).toEqual([request, second]);
+    await expect(prompt(page)).toHaveCount(1);
+    await expect(prompt(page)).toContainText(command);
+    await expect(prompt(page)).not.toContainText(second.input.command);
+    await expect(prompt(page)).toContainText('1 of 2');
+    await expect(status(page)).toHaveText(/needs input/i);
+    expect(fake.records().filter(record => record.kind === 'permission-answer')).toHaveLength(0);
+    // Watch status through the first answer and queue transition, including transient changes.
+    await status(page).evaluate(element => {
+      const state = window as unknown as { queueStatusCleared: boolean; queueStatusObserver: MutationObserver };
+      state.queueStatusCleared = false;
+      const sample = () => {
+        if (!element.isConnected || !/needs input/i.test(element.textContent || '')) state.queueStatusCleared = true;
+      };
+      state.queueStatusObserver = new MutationObserver(sample);
+      state.queueStatusObserver.observe(element.parentElement!, { childList: true, subtree: true, characterData: true });
+    });
+    await once(page).click();
+    const firstAnswer = await answer(fake, 0, 'allow');
+    expect(firstAnswer).toMatchObject({ request, answer: { behavior: 'allow', updatedInput: request.input } });
+    await expect(prompt(page)).toContainText(second.input.command);
+    await expect(prompt(page)).not.toContainText(command);
+    await expect(status(page)).toHaveText(/needs input/i);
+    expect(fake.records().filter(record => record.kind === 'permission-answer')).toHaveLength(1);
+    const cleared = await page.evaluate(() => {
+      const state = window as unknown as { queueStatusCleared: boolean; queueStatusObserver: MutationObserver };
+      state.queueStatusObserver.disconnect();
+      return state.queueStatusCleared;
+    });
+    expect(cleared, 'Status must remain needs input throughout the queue transition').toBe(false);
+    await once(page).click();
+    const secondAnswer = await answer(fake, 1, 'allow');
+    expect(secondAnswer).toMatchObject({ request: second, answer: { behavior: 'allow', updatedInput: second.input } });
+    await expect(replies(page).last()).toHaveText('Allowed command complete.');
+    await expect(replies(page).last()).toHaveAttribute('data-state', 'complete');
+    await expect(prompt(page)).toBeHidden();
+    await expect(status(page)).not.toHaveText(/needs input/i);
+    expect(fake.records().filter(record => record.kind === 'permission-answer')).toHaveLength(2);
+    expect(fake.records().filter(record => record.kind === 'turn')).toHaveLength(1);
+  });
+});
+
+test.describe('permission focus after editor', () => {
+  test.use({ fakeScenario: 'permissions-editor' });
+
+  test('AC2/AC4: focusing the composer from the editor redirects Enter to Allow once', async ({ cod: { page }, fake }) => {
+    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+    await page.keyboard.press(`${modifier}+Shift+e`);
+    const panel = page.getByTestId('project-panel');
+    await expect(panel).toBeVisible();
+    await panel.getByTestId('project-add-folder').focus();
+    await page.keyboard.press('Enter');
+    const entry = (file: string) => panel.getByTestId('project-entry').and(page.locator(`[data-path=${JSON.stringify(file)}]`));
+    await expect(entry(fake.folder)).toBeVisible();
+    await entry(fake.folder).click();
+    await panel.focus();
+    await page.keyboard.press('ArrowRight');
+    const file = path.join(fake.folder, 'fixture.txt');
+    await expect(entry(file)).toBeVisible();
+    await entry(file).click();
+    await panel.focus();
+    await page.keyboard.press('Enter');
+    const editor = page.getByTestId('workspace-area').getByTestId('editor-content');
+    await expect(editor).toContainText('Invented permission focus fixture.');
+    await send(page);
+    await expect.poll(() => fake.records().some(record => record.kind === 'gate' && record.name === 'request-permission')).toBe(true);
+    const composer = chat(page).getByRole('textbox', { name: 'Message Claude' });
+    // Leave a draft so a mistaken composer Enter has an observable message to send.
+    await composer.fill('Do not send this draft');
+    await editor.click();
+    await expect(editor).toBeFocused();
+    fake.release('request-permission');
+    await expect(prompt(page)).toBeVisible();
+    await expect(status(page)).toHaveText(/needs input/i);
+    await expect(editor).toBeFocused();
+    await composer.click();
+    await expect(once(page)).toBeFocused();
+    await page.keyboard.press('Enter');
+    await allowed(page, fake);
+    await expect(composer).toHaveValue('Do not send this draft');
+    expect(fake.records().filter(record => record.kind === 'stdin')).toHaveLength(1);
+    expect(fake.records().filter(record => record.kind === 'turn')).toHaveLength(1);
+    expect(fake.records().filter(record => record.kind === 'permission-answer')).toHaveLength(1);
+  });
 });

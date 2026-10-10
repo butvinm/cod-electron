@@ -57,15 +57,18 @@ async function turn(line) {
   for (const step of steps) {
     if (step.gate) await gate(step.gate);
     else if (step.hold) await gate('interrupt-never-release');
-    else if (step.permission) {
+    else if (step.permission || step.permissions) {
+      const requests = step.permissions || [step.permission];
       if (!argv.includes('--permission-prompt-tool') || !argv.includes('--mcp-config')) {
-        log({ kind: 'permission-host-missing', request: step.permission });
+        log({ kind: 'permission-host-missing', request: requests[0] });
         // Keep the turn pending. Missing UI must fail at the permission assertion,
         // not at a fake crash or an undocumented stream-json control message.
         await gate('permission-host-never-release');
       }
       mcp ||= await require('./mcp-client.cjs').connect(argv, log);
-      const answer = await mcp.permission(step.permission);
+      // Start every request before awaiting any answer to exercise the host queue.
+      const answers = await Promise.all(requests.map(request => mcp.permission(request)));
+      const answer = answers.find(answer => answer.behavior === 'deny') || answers[0];
       if (answer.behavior === 'deny') {
         for (const event of step.denied) {
           const denied = JSON.parse(JSON.stringify(event), (_key, value) => typeof value === 'string' ? value.replaceAll('$REASON', answer.message) : value);
@@ -73,7 +76,9 @@ async function turn(line) {
         }
         break;
       }
-      log({ kind: 'tool-run', tool_name: step.permission.tool_name, input: answer.updatedInput });
+      for (const [index, request] of requests.entries()) {
+        log({ kind: 'tool-run', tool_name: request.tool_name, input: answers[index].updatedInput });
+      }
     }
     else if (step.event) emit(step.event);
   }

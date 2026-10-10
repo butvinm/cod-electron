@@ -3,7 +3,7 @@
 Story: #9 - Answer Claude's permission requests in the chat.
 Branch: tests/9-permissions, based on story #8 tests.
 Source: artifacts/9/issue.md.
-Tests: tests/e2e/a4-permissions.spec.ts, 10 scenarios covering AC1-AC5.
+Tests: tests/e2e/a4-permissions.spec.ts, 12 scenarios covering AC1-AC5.
 
 QA owns this contract, the acceptance spec and tests/fakes/claude/.
 Developer owns app implementation of the permission host and UI, and must preserve the acceptance assertions and story #8 contracts.
@@ -75,6 +75,13 @@ S is a story-specific chosen key, not a claim about the stock Zed keymap.
 | AC4 | Separate allow and deny tests assert answer log, execution or no execution, complete transcript reaction and cleared pending status |
 | AC5 | CLI flags, local MCP connection, named-tool request and answer, no approval control messages on Claude stdin |
 
+The queue scenario uses permissions-queued: two distinct Bash requests are sent concurrently through the same MCP connection in one turn, before either answer.
+The prompt shows the first command with "1 of 2", then the second command after the first answer.
+Status must stay "needs input" through the queue transition until the second answer, and both answers are checked in the fake log.
+The editor-focus scenario uses permissions-editor: a request-permission gate delays the request until a fixture file has been opened through COD_TEST_PICK_FOLDERS and the real project panel and its editor has focus.
+The pending request leaves editor focus alone; clicking the composer transfers focus to Allow once.
+Enter sends the permission answer, preserves the composer draft and produces no extra stdin user message or turn.
+
 Each Electron scenario attaches the fake JSONL log before fixture cleanup.
 Logs contain only invented user inputs, permission data, argv and environment names; server stderr and env values are not copied.
 The AC1 screenshot needs PM comparison with stock Zed before publishing.
@@ -95,5 +102,5 @@ Then check story #8 regression compatibility through the real app:
 caffeinate -dimsu npx playwright test tests/e2e/a1-claude-chat.spec.ts --reporter=list > artifacts/9/story-8-regression.txt 2>&1
 ```
 
-Return the output to QA for measured PASS/FAIL per criterion and confirmation that all 10 #9 tests fail at the missing-permission assertion before development.
+Return the output to QA for measured PASS/FAIL per criterion and confirmation that all 12 #9 tests fail at the missing-permission assertion before development.
 Node-only fake checks run without Electron: `node --test tests/fakes/claude/protocol.test.cjs`.
