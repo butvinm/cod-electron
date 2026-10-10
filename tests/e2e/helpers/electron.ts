@@ -16,6 +16,8 @@ export const test = base.extend<{ cod: Cod }>({
 
     const profile = mkdtempSync(path.join(tmpdir(), 'cod-story-3-'));
     let app: ElectronApplication | undefined;
+    let appProcess: ReturnType<ElectronApplication['process']> | undefined;
+    let appClosed = false;
     try {
       const startedAt = performance.now();
       const env = Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined));
@@ -27,6 +29,8 @@ export const test = base.extend<{ cod: Cod }>({
         timeout: 15_000,
         recordVideo: { dir: testInfo.outputPath('video') },
       });
+      appProcess = app.process();
+      app.on('close', () => { appClosed = true; });
       const page = await app.firstWindow({ timeout: 15_000 });
       try {
         await page.waitForLoadState('load');
@@ -39,7 +43,24 @@ export const test = base.extend<{ cod: Cod }>({
         }
       }
     } finally {
-      try { await app?.close(); } finally { rmSync(profile, { recursive: true, force: true }); }
+      try {
+        if (app && appProcess && !appClosed) {
+          const process = appProcess;
+          if (process.exitCode === null && process.signalCode === null) {
+            const exited = new Promise<void>((resolve) => process.once('exit', () => resolve()));
+            const killTimeout = setTimeout(() => process.kill('SIGKILL'), 2_000);
+            try {
+              // Teardown bypasses quit prompts. Exiting can disconnect evaluate before it returns.
+              void app.evaluate(({ app }) => app.exit(0)).catch(() => {});
+              await exited;
+            } finally {
+              clearTimeout(killTimeout);
+            }
+          }
+        }
+      } finally {
+        rmSync(profile, { recursive: true, force: true });
+      }
     }
   },
 });

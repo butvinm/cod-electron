@@ -1,6 +1,7 @@
 // The only module that touches CodeMirror. esbuild bundles it to dist/editor-cm.js (see scripts/build-editor.mjs).
 // It exposes one global, CodEditor, so the rest of the renderer stays plain JS.
 import { EditorState, RangeSetBuilder } from '@codemirror/state';
+import { lockExtension, lockEffect, withLocked } from './editor-lock.mjs';
 import { EditorView, Decoration, ViewPlugin, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { syntaxTree, ensureSyntaxTree, indentUnit, bracketMatching } from '@codemirror/language';
@@ -132,11 +133,13 @@ const theme = EditorView.theme({
 // The page's CSP allows <style> elements with this nonce, which is how CodeMirror injects its own styles.
 const nonce = EditorView.cspNonce.of('cod-editor');
 
-function create({ parent, onChange }) {
+// editFilter is a transaction filter that drops edits while a close or quit is under way.
+function create({ parent, onChange, editFilter }) {
+  // locked: build the state already read-only, for buffers opened while a close or quit is under way.
   const view = new EditorView({ parent, state: EditorState.create({ doc: '', extensions: [nonce] }) });
   return {
     // A fresh buffer for one file. Each tab keeps its own state, so undo history survives tab switches.
-    stateFor(file, text) {
+    stateFor(file, text, locked = false) {
       // The main process hands over text with "\n" line breaks and restores the file's own on save.
       const state = EditorState.create({
         doc: text,
@@ -154,6 +157,8 @@ function create({ parent, onChange }) {
           highlighting,
           theme,
           nonce,
+          EditorState.transactionFilter.of(editFilter),
+          lockExtension(locked),
           EditorView.contentAttributes.of({ 'data-testid': 'editor-content', 'aria-label': 'Editor', spellcheck: 'false' }),
           EditorView.updateListener.of(update => { if (update.docChanged) onChange(update.state); }),
         ],
@@ -163,6 +168,10 @@ function create({ parent, onChange }) {
       return state;
     },
     setState(state) { view.setState(state); },
+    // Switches the shown buffer between editable and read-only, and returns its new state.
+    lockView(locked) { view.dispatch({ effects: lockEffect(locked) }); return view.state; },
+    // The same for a buffer that is not shown.
+    lockState(state, locked) { return withLocked(state, locked); },
     getState() { return view.state; },
     focus() { view.focus(); },
     hasFocus() { return view.hasFocus; },

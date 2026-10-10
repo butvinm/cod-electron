@@ -8,6 +8,7 @@ const { EditorFiles } = require('./editor-files.cjs');
 const { createClaudeProvider } = require('./agents/claude.cjs');
 const { Chats } = require('./agents/chats.cjs');
 const { createQuitGuard } = require('./agents/quit-guard.cjs');
+const { createQuitFlow } = require('./quit-flow.cjs');
 
 // Must run before the app is ready so no real profile is touched in tests.
 if (process.env.COD_USER_DATA_DIR) {
@@ -133,6 +134,37 @@ function createWindow() {
 app.whenReady().then(createWindow);
 
 // Quitting waits, with a cap, until every Claude process and the tools it started are gone.
-app.on('before-quit', createQuitGuard({ cleanup: () => chats.closeAll(), capMs: 5000, quit: () => app.quit() }));
+const chatQuitGuard = createQuitGuard({ cleanup: () => chats.closeAll(), capMs: 5000, quit: () => { quitFlow.cleanupFinished(); app.quit(); } });
+
+// Before that, the page asks about modified files. Cancel or a failed save stops the quit.
+let askCounter = 0;
+
+function askPageToQuit() {
+  const win = mainWindow;
+  if (!win || win.isDestroyed() || win.webContents.isLoading() || win.webContents.isCrashed()) return Promise.resolve(true);
+  const id = ++askCounter;
+  return new Promise(resolve => {
+    const finish = answer => {
+      ipcMain.removeListener('quit:answer', onAnswer);
+      win.removeListener('closed', onClosed);
+      resolve(answer);
+    };
+    const onAnswer = (_event, answerId, answer) => { if (answerId === id) finish(answer === true); };
+    const onClosed = () => finish(true);
+    ipcMain.on('quit:answer', onAnswer);
+    win.once('closed', onClosed);
+    win.webContents.send('quit:ask', id);
+  });
+}
+
+const quitFlow = createQuitFlow({ askPage: askPageToQuit, chatGuard: chatQuitGuard, quit: () => app.quit() });
+
+app.on('before-quit', event => quitFlow.beforeQuit(event));
+
+// Closing the only window quits the app, so it asks the same way, before the window is destroyed.
+// It stays prevented until the chat cleanup is done.
+app.on('browser-window-created', (_event, win) => {
+  win.on('close', event => quitFlow.windowClose(event));
+});
 
 app.on('window-all-closed', () => app.quit());

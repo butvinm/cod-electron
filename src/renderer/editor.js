@@ -3,10 +3,15 @@
 // The tab list logic is in editor-tabs.js and CodeMirror is behind the CodEditor global (editor-cm.js).
 // A classic script, like the other renderer files.
 const Editor = (function () {
-  const { createTabs, open: openTab, activate: activateTab, close: closeTab, displayPath, moveChoice, errorMessage, attemptSave } = EditorTabs;
+  const { createTabs, open: openTab, activate: activateTab, close: closeTab, displayPath, moveChoice, errorMessage, attemptSave, createLocks, editFilter } = EditorTabs;
   const choices = [
     { id: 'save', label: 'Save' },
     { id: 'discard', label: "Don't Save" },
+    { id: 'cancel', label: 'Cancel' },
+  ];
+  const manyChoices = [
+    { id: 'save', label: 'Save all' },
+    { id: 'discard', label: 'Discard all' },
     { id: 'cancel', label: 'Cancel' },
   ];
 
@@ -45,14 +50,17 @@ const Editor = (function () {
     let current = null;         // the workspace being shown
     let shown = null;           // { workspaceId, file, buffer } loaded in the view
     let prompt = null;          // { close(choiceId) } while the save prompt is open
+    let saving = false;         // true while Save all writes, so closes wait
 
     const space = id => {
       if (!spaces.has(id)) spaces.set(id, { tabs: createTabs(), buffers: new Map() });
       return spaces.get(id);
     };
 
+    const locks = createLocks();
     const view = CodEditor.create({
       parent: surface,
+      editFilter: editFilter(() => shown !== null && locks.has(shown.workspaceId)),
       onChange(state) {
         if (!shown) return;
         shown.buffer.state = state;
@@ -134,7 +142,7 @@ const Editor = (function () {
         pending.add(key);
         try {
           const { text, eol, bom } = await window.cod.editor.read(workspaceId, file);
-          const state = view.stateFor(file, text);
+          const state = view.stateFor(file, text, locks.has(workspaceId));
           s.buffers.set(file, { state, saved: state.doc, dirty: false, eol, bom });
         } catch (error) {
           console.error(error);
@@ -174,8 +182,20 @@ const Editor = (function () {
 
     // The in-window prompt of Zed 1.23.2: three stacked buttons, Save highlighted first.
     function askToSave(workspaceId, file) {
+      const message = el('p', { class: 'editor-prompt-message' }, el('code', { text: displayPath(roots(workspaceId), file) }), ' contains unsaved edits. Do you want to save it?');
+      return ask(message, choices);
+    }
+
+    // The multi-file form: the same card with a list of paths and Save all / Discard all / Cancel.
+    function askToSaveAll(entries) {
+      const list = el('ul', { class: 'editor-prompt-files' }, ...entries.map(({ workspaceId, file }) =>
+        el('li', { testid: 'editor-save-prompt-file', text: displayPath(roots(workspaceId), file) })));
+      const message = el('div', { class: 'editor-prompt-message' }, el('p', { text: 'Do you want to save changes to the following files?' }), list);
+      return ask(message, manyChoices);
+    }
+
+    function ask(message, choices) {
       return new Promise(resolve => {
-        const message = el('p', { class: 'editor-prompt-message' }, el('code', { text: displayPath(roots(workspaceId), file) }), ' contains unsaved edits. Do you want to save it?');
         const buttons = choices.map(choice => el('button', { class: 'editor-prompt-button', 'data-choice': choice.id, text: choice.label }));
         const dialog = el('div', { class: 'editor-prompt', role: 'alertdialog', 'aria-modal': 'true', 'aria-label': 'Unsaved changes', testid: 'editor-save-prompt', tabindex: '-1' },
           message, el('div', { class: 'editor-prompt-buttons' }, ...buttons));
@@ -210,7 +230,7 @@ const Editor = (function () {
     }
 
     async function requestClose(workspaceId, file) {
-      if (prompt) return;
+      if (prompt || saving) return;
       const s = space(workspaceId);
       const buffer = s.buffers.get(file);
       if (!buffer) return;
@@ -232,8 +252,101 @@ const Editor = (function () {
       }
     }
 
+    // Asks about the modified files of the given workspaces, in workspace order, then tab order.
+    // Resolves true when it is fine to go on: nothing was modified, the user discarded, or every file was saved.
+    // On Cancel or a failed save it resolves false. A failure first calls showWorkspace(id) and
+    // then activates the failing tab and shows its error, so the user sees what went wrong.
+    // Makes every open buffer of these workspaces read-only (CodeMirror's own readOnly, so Undo and Redo stop too), or editable again.
+    function setLocked(workspaceIds, locked) {
+      if (locked) locks.lock(workspaceIds); else locks.unlock(workspaceIds);
+      for (const workspaceId of workspaceIds) {
+        for (const buffer of spaces.get(workspaceId)?.buffers.values() ?? []) {
+          buffer.state = shown && shown.buffer === buffer ? view.lockView(locked) : view.lockState(buffer.state, locked);
+        }
+      }
+    }
+
+    // From the first moment until the answer is known, the editors of these workspaces are read-only.
+    // A yes keeps them read-only, because the close or quit completes next. Cancel and failures unlock them.
+    async function confirmClose(workspaceIds, showWorkspace) {
+      if (prompt || saving) return false;
+      setLocked(workspaceIds, true);
+      let ok = false;
+      try {
+        ok = await decideClose(workspaceIds, showWorkspace);
+      } finally {
+        if (!ok) setLocked(workspaceIds, false);
+      }
+      return ok;
+    }
+
+    async function decideClose(workspaceIds, showWorkspace) {
+      const entries = [];
+      for (const workspaceId of workspaceIds) {
+        const s = spaces.get(workspaceId);
+        if (!s) continue;
+        for (const file of s.tabs.paths) if (s.buffers.get(file)?.dirty) entries.push({ workspaceId, file });
+      }
+      if (entries.length === 0) return true;
+      const before = document.activeElement;
+      const choice = await askToSaveAll(entries);
+      if (choice === 'discard') return true;
+      if (choice === 'save') {
+        saving = true;
+        try { return await saveEntries(entries, showWorkspace); } finally { saving = false; }
+      }
+      if (before && before.isConnected) before.focus();
+      else if (shown) view.focus();
+      return false;
+    }
+
+    // True only when every listed file is on disk and still unmodified, so edits made during a write are never dropped.
+    async function saveEntries(entries, showWorkspace) {
+      const reveal = (workspaceId, file, message) => {
+        space(workspaceId).tabs = activateTab(space(workspaceId).tabs, file);
+        showWorkspace(workspaceId);
+        sync();
+        report(message);
+        view.focus();
+      };
+      {
+        for (const { workspaceId, file } of entries) {
+          const buffer = spaces.get(workspaceId)?.buffers.get(file);
+          if (!buffer || !buffer.dirty) continue;
+          let message = null;
+          const ok = await attemptSave({
+            name: basename(file),
+            report: text => { message = text; report(text); },
+            restoreFocus: () => {},
+            async write() {
+              const state = stateOf(buffer);
+              await window.cod.editor.write(workspaceId, file, { text: CodEditor.textOf(state), eol: buffer.eol, bom: buffer.bom });
+              buffer.saved = state.doc;
+              refreshDirty(buffer);
+            },
+          });
+          if (ok) continue;
+          reveal(workspaceId, file, message);
+          return false;
+        }
+        for (const { workspaceId, file } of entries) {
+          if (!spaces.get(workspaceId)?.buffers.get(file)?.dirty) continue;
+          reveal(workspaceId, file, `${basename(file)} changed while saving. Close again to review it.`);
+          return false;
+        }
+        return true;
+      }
+    }
+
     return {
       element,
+      confirmClose,
+      notify: report,
+      // After a confirmed quit: every editor, including ones opened later, stays read-only until exit.
+      freeze() {
+        locks.lockAll();
+        setLocked([...spaces.keys()], true);
+      },
       open,
       save,
       closeActive() {
@@ -249,6 +362,7 @@ const Editor = (function () {
         if (prompt && workspaceId === current) prompt.close('cancel');
         if (shown && shown.workspaceId === workspaceId) shown = null;
         spaces.delete(workspaceId);
+        locks.unlock([workspaceId]);
         if (workspaceId === current) { current = null; sync(); }
       },
       // The page rebuilds its DOM and moves `element`. Call detach() first; the result restores scroll and focus afterwards.

@@ -14,7 +14,13 @@
     return { workspaces: [first], activeId: first.id, nextNumber: 2 };
   }
 
+  // After a confirmed quit no new workspace may appear, because its files were never asked about.
+  function freeze(state) {
+    return { ...state, frozen: true };
+  }
+
   function add(state) {
+    if (state.frozen) return state;
     const ws = makeWorkspace(state.nextNumber);
     return {
       workspaces: [...state.workspaces, ws],
@@ -49,7 +55,7 @@
     return { ...state, workspaces: rest, activeId: rest[Math.min(i, rest.length - 1)].id };
   }
 
-  const api = { createState, add, activate, step, close };
+  const api = { createState, freeze, add, activate, step, close };
   if (typeof module !== 'undefined') module.exports = api;
   else root.Workspaces = api;
 })(globalThis);

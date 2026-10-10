@@ -70,7 +70,33 @@
     }
   }
 
-  const api = { createTabs, open, activate, close, displayPath, moveChoice, errorMessage, attemptSave };
+  // Runs a confirmation that guards data. Any error means "do not go on": it reports the reason and resolves false.
+  async function confirmOrKeep(confirm, report) {
+    try {
+      return (await confirm()) === true;
+    } catch (error) {
+      report(`Could not check for unsaved files: ${errorMessage(error)}`);
+      return false;
+    }
+  }
+
+  // Workspaces whose editors are read-only because a close or quit is under way.
+  function createLocks() {
+    const locked = new Set();
+    let all = false;
+    return {
+      lock: ids => ids.forEach(id => locked.add(id)),
+      unlock: ids => ids.forEach(id => locked.delete(id)),
+      // Locks every workspace, now and later. Nothing unlocks it, because the app is on its way out.
+      lockAll() { all = true; },
+      has: id => all || locked.has(id),
+    };
+  }
+
+  // A CodeMirror transaction filter: while locked, transactions that change the document are dropped.
+  const editFilter = isLocked => transaction => (transaction.docChanged && isLocked() ? [] : transaction);
+
+  const api = { createTabs, open, activate, close, displayPath, moveChoice, errorMessage, attemptSave, confirmOrKeep, createLocks, editFilter };
   if (typeof module !== 'undefined') module.exports = api;
   else root.EditorTabs = api;
 })(globalThis);

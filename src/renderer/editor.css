@@ -136,6 +136,15 @@
 
 .editor-prompt-message { margin: 0 0 12px; line-height: 1.5; }
 .editor-prompt-message code { font-family: Lilex, ui-monospace, Menlo, monospace; font-size: 12px; }
+.editor-prompt-message p { margin: 0 0 8px; }
+.editor-prompt-files {
+  max-height: 30vh;
+  margin: 0;
+  padding: 0 0 0 18px;
+  overflow-y: auto;
+  font-family: Lilex, ui-monospace, Menlo, monospace;
+  font-size: 12px;
+}
 .editor-prompt-buttons { display: flex; flex-direction: column; gap: 6px; }
 
 .editor-prompt-button {
