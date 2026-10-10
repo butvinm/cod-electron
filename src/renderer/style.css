@@ -1,0 +1,97 @@
+/* One Dark, values from Zed's one.json theme. */
+:root {
+  --background: #3b414d;
+  --text: #dce0e5;
+  --text-muted: #a9afbc;
+  --border: #464b57;
+  --border-variant: #363c46;
+  --tab-bar: #2f343e;
+  --tab-inactive: #2f343e;
+  --tab-active: #282c33;
+  --editor: #282c33;
+  --hover: #363c46;
+  --active: #454a56;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--background);
+  color: var(--text);
+  font: 13px system-ui, -apple-system, "Segoe UI", sans-serif;
+  user-select: none;
+}
+
+#cod-window {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: var(--background);
+}
+
+.tab-bar {
+  display: flex;
+  align-items: stretch;
+  height: 32px;
+  flex: none;
+  background-color: var(--tab-bar);
+  border-bottom: 1px solid var(--border-variant);
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0 8px 0 12px;
+  background-color: var(--tab-inactive);
+  color: var(--text-muted);
+  border-right: 1px solid var(--border-variant);
+  cursor: pointer;
+}
+
+.tab[aria-selected="true"] {
+  background-color: var(--tab-active);
+  color: var(--text);
+  margin-bottom: -1px;
+}
+
+.tab-label {
+  color: inherit;
+  white-space: nowrap;
+}
+
+.tab[aria-selected="true"] .tab-label { color: var(--text); }
+
+button {
+  font: inherit;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+button:hover { background-color: var(--hover); color: var(--text); }
+button:active { background-color: var(--active); }
+button:focus-visible, .tab:focus-visible { outline: 1px solid #47679e; outline-offset: -1px; }
+
+.tab-close { width: 18px; height: 18px; line-height: 16px; padding: 0; }
+
+.add {
+  align-self: center;
+  width: 24px;
+  height: 24px;
+  margin-left: 4px;
+  padding: 0;
+  font-size: 16px;
+  line-height: 20px;
+}
+
+.workspace-area {
+  flex: 1;
+  background-color: var(--editor);
+}
