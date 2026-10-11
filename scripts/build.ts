@@ -38,6 +38,7 @@ await Promise.all([
     platform: 'browser',
     format: 'iife',
     target: 'chrome140',
+    loader: { '.svg': 'text' },
   }),
 ]);
 
