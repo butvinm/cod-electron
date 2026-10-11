@@ -57,6 +57,20 @@ export function answersOf(questions: Question[], choices: Choice[]): Record<stri
   return answers;
 }
 
+// The choice after the person picks a row (the last row is Other). Single choice replaces the
+// answer and drops the Other text; multiple choice toggles. Other text is dropped whenever
+// Other is switched off, so the field and the stored answer never disagree.
+export function choose(question: Question, choice: Choice, row: number, toggle: boolean): Choice {
+  if (row === question.options.length) {
+    if (question.multiSelect && choice.other !== null && toggle) return { picked: choice.picked, other: null };
+    return { picked: question.multiSelect ? choice.picked : [], other: choice.other ?? '' };
+  }
+  if (question.multiSelect) {
+    return { picked: choice.picked.includes(row) ? choice.picked.filter(index => index !== row) : [...choice.picked, row], other: choice.other };
+  }
+  return { picked: [row], other: null };
+}
+
 // A question is committed when it has an answer. Other needs its text.
 export function isAnswered(choice: Choice): boolean {
   return choice.picked.length > 0 || (choice.other !== null && choice.other !== '');

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { answerText, answersOf, isAnswered, nextRow, parseQuestions, type Question } from '../../src/renderer/question-model.ts';
+import { choose, answerText, answersOf, isAnswered, nextRow, parseQuestions, type Question } from '../../src/renderer/question-model.ts';
 import { createChat, reduce } from '../../src/renderer/chat-model.ts';
 
 const single: Question = { header: 'Size', question: 'Which size?', multiSelect: false, options: [{ label: 'Small', description: 'a' }, { label: 'Large', description: 'b' }] };
@@ -26,6 +26,27 @@ test('a question needs a choice or Other text to count as answered', () => {
   assert.equal(isAnswered({ picked: [], other: '' }), false);
   assert.equal(isAnswered({ picked: [], other: 'x' }), true);
   assert.equal(isAnswered({ picked: [0], other: null }), true);
+});
+
+test('reselecting Other after a named option starts empty, so the field and the answer agree', () => {
+  const other = single.options.length;
+  let choice = choose(single, { picked: [], other: null }, other, false);
+  assert.deepEqual(choice, { picked: [], other: '' });
+  choice = { ...choice, other: 'Custom size' };
+  choice = choose(single, choice, 0, false);
+  assert.deepEqual(choice, { picked: [0], other: null });
+  choice = choose(single, choice, other, false);
+  assert.deepEqual(choice, { picked: [], other: '' });
+  assert.equal(isAnswered(choice), false);
+});
+
+test('multiple choice toggles options and Other independently', () => {
+  const other = multi.options.length;
+  let choice = choose(multi, { picked: [], other: null }, 0, true);
+  choice = choose(multi, choice, other, true);
+  assert.deepEqual(choice, { picked: [0], other: '' });
+  choice = choose(multi, { ...choice, other: 'x' }, other, true);
+  assert.deepEqual(choice, { picked: [0], other: null });
 });
 
 test('nextRow moves with arrows, stops at the ends and jumps with 1-4', () => {

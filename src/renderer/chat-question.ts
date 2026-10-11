@@ -1,7 +1,7 @@
 // The question card of the chat: Claude's AskUserQuestion shown as questions with options.
 // Keyboard: Down/Up or 1-4 move between options, Enter chooses (single) or commits (multiple)
 // and moves on, Space toggles in a multiple-choice question, Esc is handled by the chat (declines).
-import { answersOf, isAnswered, nextRow, type Choice, type Question } from './question-model.ts';
+import { answersOf, choose as pick, isAnswered, nextRow, type Choice, type Question } from './question-model.ts';
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<string, string> = {}, ...kids: (Node | string)[]): HTMLElementTagNameMap[K] {
   const n = document.createElement(tag);
@@ -45,6 +45,7 @@ export function createQuestionForm(questions: Question[], onSubmit: (answers: Re
     });
     const input = inputs[qi];
     input.hidden = !active;
+    if (choice.other === null) input.value = '';
   }
 
   function focusRow(qi: number, row: number): void {
@@ -64,26 +65,9 @@ export function createQuestionForm(questions: Question[], onSubmit: (answers: Re
   // Chooses the focused row. For single choice it replaces the answer; for multiple choice it toggles.
   function choose(qi: number, row: number, toggle: boolean): void {
     const question = questions[qi];
-    const choice = choices[qi];
-    const isOther = row === question.options.length;
-    if (isOther) {
-      if (question.multiSelect && choice.other !== null && toggle) {
-        choice.other = null;
-      } else {
-        if (!question.multiSelect) choice.picked = [];
-        choice.other = choice.other ?? '';
-      }
-      redraw(qi);
-      if (choice.other !== null) inputs[qi].focus();
-      return;
-    }
-    if (question.multiSelect) {
-      choice.picked = choice.picked.includes(row) ? choice.picked.filter(index => index !== row) : [...choice.picked, row];
-    } else {
-      choice.picked = [row];
-      choice.other = null;
-    }
+    choices[qi] = pick(question, choices[qi], row, toggle);
     redraw(qi);
+    if (row === question.options.length && choices[qi].other !== null) inputs[qi].focus();
   }
 
   const groups = questions.map((question, qi) => {
