@@ -70,6 +70,8 @@ const fileIndex = new FileIndex(id => folders.list(id), workspaceId => sendToPag
 
 // Claude chat. The agent process lives here; the page only gets events and a narrow API.
 const claude = createClaudeProvider();
+// However the app ends (app.exit included), no Claude process may outlive it.
+process.on('exit', () => claude.killAll());
 const chats = new Chats({
   provider: claude,
   folders: { list: id => folders.list(id) },

@@ -42,6 +42,8 @@ export interface ClaudeProvider extends AgentProvider {
   start(options: StartOptions): ClaudeSession;
   ready: Promise<number | null>;
   endpointCount(): number;
+  // Kills every process still running, at once. For the moment the app exits without a clean shutdown.
+  killAll(): void;
   close(): Promise<void>;
 }
 
@@ -61,6 +63,8 @@ interface Arrival {
 export function createClaudeProvider({ bin = process.env.COD_CLAUDE_BIN || 'claude', env = process.env, graceMs = INTERRUPT_GRACE_MS, onArrival = () => {} }: ClaudeProviderOptions = {}): ClaudeProvider {
   // Permission requests arrive through a small local MCP server (see permission-host.ts).
   const host = createPermissionHost();
+  // How to kill each process that has not finished, so an abrupt app exit leaves none behind.
+  const killers = new Set<() => void>();
 
   function start({ cwd, resume, permissionMode, onEvent, onExit }: StartOptions): ClaudeSession {
     const args = [...STREAMING_FLAGS];
@@ -120,6 +124,8 @@ export function createClaudeProvider({ bin = process.env.COD_CLAUDE_BIN || 'clau
     };
 
     const child = spawn(bin, args, { cwd, env: childEnv(env), stdio: ['pipe', 'pipe', 'pipe'], detached: process.platform !== 'win32' });
+    const killer = (): void => signalTree('SIGKILL');
+    killers.add(killer);
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
     child.stdout.on('data', (chunk: string) => { for (const event of parser.push(chunk)) emit(event); });
@@ -149,6 +155,7 @@ export function createClaudeProvider({ bin = process.env.COD_CLAUDE_BIN || 'clau
       denyAll('The Claude session ended.');
       if (registration) registration.unregister();
       signalTree('SIGKILL');
+      killers.delete(killer);
       for (const event of parser.end()) emit(event);
       if (interrupting) {
         onEvent({ type: 'interrupted' });
@@ -211,5 +218,5 @@ export function createClaudeProvider({ bin = process.env.COD_CLAUDE_BIN || 'clau
     };
   }
 
-  return { start, ready: host.ready, endpointCount: () => host.count(), close: () => host.close() };
+  return { start, ready: host.ready, endpointCount: () => host.count(), killAll: () => { for (const kill of killers) kill(); killers.clear(); }, close: () => host.close() };
 }
