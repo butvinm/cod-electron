@@ -4,6 +4,7 @@ import { visibleRows, navigate, createPanelState, type PanelState } from './proj
 import { confirmOrKeep } from './editor-tabs.ts';
 import * as Editor from './editor.ts';
 import * as Chat from './chat.ts';
+import { closeIcon } from './icons.ts';
 import * as FileFinder from './file-finder.ts';
 import * as RecentPicker from './recent-picker.ts';
 import * as StartScreen from './start-screen.ts';
@@ -157,7 +158,7 @@ function render(): void {
   bar.append(tabs);
   for (const ws of state.workspaces) {
     const selected = ws.id === state.activeId;
-    const closeButton = el('button', { class: 'tab-close', testid: 'workspace-close', 'aria-label': `Close ${ws.name}`, tabindex: '-1', text: String.fromCharCode(0xd7) });
+    const closeButton = el('button', { class: 'tab-close', testid: 'workspace-close', 'aria-label': `Close ${ws.name}`, tabindex: '-1' }, closeIcon());
     const tab = el('div', {
       class: 'tab',
       role: 'tab',
