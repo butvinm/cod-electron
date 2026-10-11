@@ -1,17 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createRequire } from 'node:module';
+import { createQuitGuard } from '../../src/agents/quit-guard.ts';
 
-const require = createRequire(import.meta.url);
-const { createQuitGuard } = require('../../src/agents/quit-guard.cjs');
-
-const request = guard => { const event = { prevented: false, preventDefault() { this.prevented = true; } }; guard(event); return event; };
+const request = (guard: ReturnType<typeof createQuitGuard>) => { const event = { prevented: false, preventDefault() { this.prevented = true; } }; guard(event); return event; };
 
 test('repeated quit requests are all held until the one cleanup finishes, then quit once', async () => {
-  let release;
+  let release: () => void = () => {};
   let cleanups = 0;
   let quits = 0;
-  const guard = createQuitGuard({ cleanup: () => { cleanups++; return new Promise(resolve => { release = resolve; }); }, capMs: 5000, quit: () => { quits++; } });
+  const guard = createQuitGuard({ cleanup: () => { cleanups++; return new Promise<void>(resolve => { release = resolve; }); }, capMs: 5000, quit: () => { quits++; } });
   assert.equal(request(guard).prevented, true);
   assert.equal(request(guard).prevented, true);
   assert.equal(request(guard).prevented, true);

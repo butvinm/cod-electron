@@ -1,14 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createRequire } from 'node:module';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-
-const require = createRequire(import.meta.url);
-const { visibleRows, navigate } = require('../../src/renderer/project-tree.js');
-const { Folders } = require('../../src/folders.cjs');
-const { readDir, compare } =require('../../src/project-fs.cjs');
+import { visibleRows, navigate } from '../../src/renderer/project-tree.ts';
+import { Folders } from '../../src/folders.ts';
+import { readDir, compare } from '../../src/project-fs.ts';
+import type { DirEntry, RootsChanged } from '../../src/shared/ipc.ts';
 
 test('readDir lists folders first, natural case-insensitive order, without .git', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'cod-unit-'));
@@ -23,7 +21,7 @@ test('readDir lists folders first, natural case-insensitive order, without .git'
 
 test('Folders keeps roots per workspace, skips duplicates and emits change', () => {
   const folders = new Folders();
-  const events = [];
+  const events: RootsChanged[] = [];
   folders.on('change', e => events.push(e));
   assert.deepEqual(folders.add('a', ['/x/one', '/x/two']), ['/x/one', '/x/two']);
   assert.deepEqual(folders.add('a', ['/x/one']), []);
@@ -80,9 +78,9 @@ test('Folders.contains rejects symlinks that lead out of a root but accepts ones
 });
 
 test('compare puts folders first, ignores case, is natural, and puts lowercase first on ties', () => {
-  const file = name => ({ name, isDirectory: false });
-  const dir = name => ({ name, isDirectory: true });
-  const sorted = list => [...list].sort(compare).map(e => e.name);
+  const file = (name: string) => ({ name, isDirectory: false });
+  const dir = (name: string) => ({ name, isDirectory: true });
+  const sorted = (list: { name: string; isDirectory: boolean }[]) => [...list].sort(compare).map(e => e.name);
   assert.deepEqual(sorted([file('a'), dir('Z')]), ['Z', 'a']);
   assert.deepEqual(sorted([file('B'), file('a'), file('c')]), ['a', 'B', 'c']);
   assert.deepEqual(sorted([file('file10'), file('file2')]), ['file2', 'file10']);
@@ -90,11 +88,11 @@ test('compare puts folders first, ignores case, is natural, and puts lowercase f
   assert.deepEqual(sorted([dir('Src'), dir('src')]), ['src', 'Src']);
 });
 
-const listings = {
+const listings: Record<string, DirEntry[]> = {
   '/r': [{ name: 'd', path: '/r/d', isDirectory: true }, { name: 'f', path: '/r/f', isDirectory: false }],
   '/r/d': [{ name: 'g', path: '/r/d/g', isDirectory: false }],
 };
-const rows = expanded => visibleRows(['/r'], new Set(expanded), listings);
+const rows = (expanded: string[]) => visibleRows(['/r'], new Set(expanded), listings);
 
 test('visibleRows hides children of collapsed folders', () => {
   assert.deepEqual(rows(['/r']).map(r => r.path), ['/r', '/r/d', '/r/f']);
@@ -111,7 +109,7 @@ test('navigate moves, expands, collapses and opens like Zed', () => {
   assert.deepEqual(navigate(rows(['/r']), '/r/d', 'ArrowRight'), { expand: '/r/d' });
   assert.deepEqual(navigate(all, '/r/d', 'ArrowLeft'), { collapse: '/r/d' });
   assert.deepEqual(navigate(all, '/r/d/g', 'ArrowLeft'), { select: '/r/d' });
-  assert.equal(navigate(all, '/r', 'ArrowLeft').collapse, '/r');
+  assert.equal(navigate(all, '/r', 'ArrowLeft')?.collapse, '/r');
   assert.deepEqual(navigate(all, '/r/f', 'Enter'), { open: '/r/f' });
   assert.equal(navigate(all, '/r/d', 'Enter'), null);
   assert.equal(navigate(all, '/r/f', 'x'), null);

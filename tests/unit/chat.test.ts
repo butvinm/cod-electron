@@ -1,19 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { createParser } from '../../src/agents/claude-events.ts';
+import { childEnv, createClaudeProvider } from '../../src/agents/claude.ts';
+import { Chats } from '../../src/agents/chats.ts';
+import type { AgentProvider, AgentSession, StartOptions } from '../../src/agents/provider.ts';
+import { createChat, reduce, toolTarget, splitBlocks, type ChatModelEvent } from '../../src/renderer/chat-model.ts';
+import type { ChatEvent } from '../../src/shared/chat.ts';
 
-const require = createRequire(import.meta.url);
-const { createParser } = require('../../src/agents/claude-events.cjs');
-const { childEnv, createClaudeProvider } =require('../../src/agents/claude.cjs');
-const { Chats } = require('../../src/agents/chats.cjs');
-const { createChat, reduce, toolTarget, splitBlocks } = require('../../src/renderer/chat-model.js');
-
-const line = value => `${JSON.stringify(value)}\n`;
-const delta = text => ({ type: 'stream_event', event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } } });
+const line = (value: object) => `${JSON.stringify(value)}\n`;
+const delta = (text: string) => ({ type: 'stream_event', event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } } });
 
 test('parser maps init, streamed text, tool use, tool result and result', () => {
   const parser = createParser();
@@ -48,9 +47,9 @@ test('parser ignores sub-agent traffic and classifies a login failure', () => {
   const parser = createParser();
   assert.deepEqual(parser.push(line({ ...delta('x'), parent_tool_use_id: 'task1' })), []);
   const [failed] = parser.push(line({ type: 'result', is_error: true, result: 'Not logged in. Please run claude auth login.' }));
-  assert.equal(failed.kind, 'not-logged-in');
+  assert.deepEqual(failed, { type: 'error', kind: 'not-logged-in', message: 'Not logged in. Please run claude auth login.' });
   const [other] = parser.push(line({ type: 'result', is_error: true, result: 'Rate limited' }));
-  assert.equal(other.kind, 'failed');
+  assert.deepEqual(other, { type: 'error', kind: 'failed', message: 'Rate limited' });
 });
 
 test('child environment drops credentials and bare mode', () => {
@@ -58,35 +57,40 @@ test('child environment drops credentials and bare mode', () => {
   assert.deepEqual(Object.keys(env).sort(), ['ANTHROPIC_BASE_URL', 'COD_FAKE_CLAUDE_LOG', 'PATH']);
 });
 
+// One field of a transcript item, whatever the kind of the item is.
+const field = (item: object, name: string): unknown => (item as Record<string, unknown>)[name];
+
 test('transcript: streaming reply, tool call and result', () => {
   let state = createChat();
-  for (const event of [
+  const events: ChatModelEvent[] = [
     { type: 'user-message', text: 'go' },
     { type: 'session', id: 's1' },
     { type: 'text', text: 'One' },
     { type: 'text', text: ' two' },
-  ]) state = reduce(state, event);
+  ];
+  for (const event of events) state = reduce(state, event);
   assert.equal(state.busy, true);
   assert.equal(state.sessionId, 's1');
-  assert.deepEqual(state.items.map(i => [i.kind, i.text, i.state]), [['user', 'go', undefined], ['assistant', 'One two', 'streaming']]);
+  assert.deepEqual(state.items.map(i => [i.kind, 'text' in i ? i.text : undefined, 'state' in i ? i.state : undefined]), [['user', 'go', undefined], ['assistant', 'One two', 'streaming']]);
   state = reduce(state, { type: 'tool-use', id: 't', name: 'Bash', input: { command: 'ls' } });
-  assert.equal(state.items[1].state, 'complete');
+  assert.equal(field(state.items[1], 'state'), 'complete');
   state = reduce(state, { type: 'tool-result', id: 't', output: 'a', isError: false });
-  assert.equal(state.items[2].output, 'a');
+  assert.equal(field(state.items[2], 'output'), 'a');
   state = reduce(state, { type: 'turn-end' });
   assert.equal(state.busy, false);
 });
 
 test('transcript: interrupt marks the reply and ends the turn; login errors give the help text', () => {
   let state = createChat();
-  for (const event of [{ type: 'user-message', text: 'go' }, { type: 'text', text: 'Part' }, { type: 'interrupted' }]) state = reduce(state, event);
-  assert.equal(state.items[1].state, 'interrupted');
+  const events: ChatModelEvent[] = [{ type: 'user-message', text: 'go' }, { type: 'text', text: 'Part' }, { type: 'interrupted' }];
+  for (const event of events) state = reduce(state, event);
+  assert.equal(field(state.items[1], 'state'), 'interrupted');
   assert.equal(state.items[2].kind, 'interrupted');
   assert.equal(state.busy, false);
   state = reduce(state, { type: 'text', text: 'Next' });
-  assert.equal(state.items[3].state, 'streaming');
+  assert.equal(field(state.items[3], 'state'), 'streaming');
   state = reduce(state, { type: 'error', kind: 'not-logged-in', message: 'raw' });
-  assert.match(state.items[4].message, /claude auth login/);
+  assert.match(String(field(state.items[4], 'message')), /claude auth login/);
 });
 
 test('toolTarget picks the file, command or first string', () => {
@@ -102,15 +106,23 @@ test('splitBlocks finds fenced code and tolerates an unclosed fence', () => {
   assert.deepEqual(splitBlocks('plain'), [{ type: 'text', text: 'plain' }]);
 });
 
-function fakeProvider() {
-  const started = [];
+interface FakeSession extends AgentSession {
+  options: StartOptions;
+  sent: string[];
+  alive: boolean;
+  interrupting: boolean;
+}
+
+function fakeProvider(): AgentProvider & { started: FakeSession[] } {
+  const started: FakeSession[] = [];
   return {
     started,
     start(options) {
-      const session = {
+      const session: FakeSession = {
         options, alive: true, interrupting: false, sent: [],
         send(text) { this.sent.push(text); },
         interrupt() { this.interrupting = true; },
+        answerPermission() {},
         close() { this.alive = false; },
       };
       started.push(session);
@@ -121,8 +133,8 @@ function fakeProvider() {
 
 test('Chats: cwd is the first folder or home, and a new process after an interrupt resumes the session', () => {
   const provider = fakeProvider();
-  const roots = { w1: ['/proj/a', '/proj/b'] };
-  const emitted = [];
+  const roots: Record<string, string[]> = { w1: ['/proj/a', '/proj/b'] };
+  const emitted: [string, ChatEvent][] = [];
   const chats = new Chats({ provider, folders: { list: id => roots[id] || [] }, emit: (id, event) => emitted.push([id, event]), home: '/home/me' });
   assert.deepEqual(chats.info('w1'), { cwd: '/proj/a', home: false });
   assert.deepEqual(chats.info('w2'), { cwd: '/home/me', home: true });
@@ -146,7 +158,7 @@ test('Chats: cwd is the first folder or home, and a new process after an interru
 
 test('Chats: a changed first folder moves an idle process at once and a busy one after its turn, keeping the session', () => {
   const provider = fakeProvider();
-  const roots = { w1: [] };
+  const roots: Record<string, string[]> = { w1: [] };
   const chats = new Chats({ provider, folders: { list: id => roots[id] || [] }, emit: () => {}, home: '/home/me' });
   chats.send('w1', 'one');
   const first = provider.started[0];
@@ -175,9 +187,9 @@ test('Chats: a changed first folder moves an idle process at once and a busy one
 });
 
 const stubborn = fileURLToPath(new URL('./helpers/stubborn-claude.cjs', import.meta.url));
-const alive = pid => { try { process.kill(pid, 0); return true; } catch { return false; } };
+const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 
-async function stubbornSession(onEvent) {
+async function stubbornSession(onEvent: (event: ChatEvent) => void) {
   const dir = mkdtempSync(path.join(tmpdir(), 'cod-unit-stubborn-'));
   const pidFile = path.join(dir, 'pids');
   const provider = createClaudeProvider({ bin: stubborn, env: { ...process.env, STUBBORN_PID_FILE: pidFile }, graceMs: 100 });
@@ -190,7 +202,7 @@ async function stubbornSession(onEvent) {
 }
 
 test('interrupt on a process that ignores signals still ends it, its tools, and reports interrupted', async () => {
-  const events = [];
+  const events: string[] = [];
   const { session, cli, tool, dir } = await stubbornSession(event => events.push(event.type));
   try {
     session.interrupt();
@@ -203,7 +215,7 @@ test('interrupt on a process that ignores signals still ends it, its tools, and 
 });
 
 test('close on a process that ignores signals still ends it and its tools', async () => {
-  const events = [];
+  const events: string[] = [];
   const { session, cli, tool, dir } = await stubbornSession(event => events.push(event.type));
   try {
     await session.close();

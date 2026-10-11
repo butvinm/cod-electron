@@ -1,11 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createRequire } from 'node:module';
+import { createState, freeze, add, activate, step, close, type WorkspacesState } from '../../src/renderer/workspaces.ts';
 
-const { createState, freeze, add, activate, step, close } = createRequire(import.meta.url)('../../src/renderer/workspaces.js');
-
-const names = s => s.workspaces.map(w => w.name);
-const activeName = s => s.workspaces.find(w => w.id === s.activeId).name;
+const names = (s: WorkspacesState) => s.workspaces.map(w => w.name);
+const activeName = (s: WorkspacesState) => s.workspaces.find(w => w.id === s.activeId)?.name;
 
 test('starts with one active workspace', () => {
   const s = createState();

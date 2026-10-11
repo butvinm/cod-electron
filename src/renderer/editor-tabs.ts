@@ -84,7 +84,8 @@ export async function attemptSave({ write, report, restoreFocus, name }: SaveAtt
 }
 
 // Runs a confirmation that guards data. Any error means "do not go on": it reports the reason and resolves false.
-export async function confirmOrKeep(confirm: () => Promise<boolean> | boolean, report: (message: string) => void): Promise<boolean> {
+// Only an explicit true counts as a yes, so the confirmation may return anything.
+export async function confirmOrKeep(confirm: () => unknown, report: (message: string) => void): Promise<boolean> {
   try {
     return (await confirm()) === true;
   } catch (error) {

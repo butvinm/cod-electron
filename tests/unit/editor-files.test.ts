@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createRequire } from 'node:module';
+import { Folders } from '../../src/folders.ts';
+import { EditorFiles, type EditorFilesOptions } from '../../src/editor-files.ts';
 
-const require = createRequire(import.meta.url);
-const { Folders } = require('../../src/folders.cjs');
-const { EditorFiles } = require('../../src/editor-files.cjs');
+// A copy of node:fs with some functions replaced. The doubles have narrower signatures than the overloaded originals, hence the cast.
+const fsWith = (replacements: Record<string, unknown>): typeof fs => ({ ...fs, ...replacements }) as typeof fs;
 
-function setup(options) {
+function setup(options?: EditorFilesOptions) {
   const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'cod-editor-files-')));
   const root = path.join(base, 'project');
   const outside = path.join(base, 'outside.txt');
@@ -22,8 +22,8 @@ function setup(options) {
   return { base, root, outside, file: path.join(root, 'a.txt'), files: new EditorFiles(folders, options) };
 }
 
-const cleanup = ({ base }) => fs.rmSync(base, { recursive: true });
-const plain = text => ({ text, eol: 'lf', bom: false });
+const cleanup = ({ base }: { base: string }) => fs.rmSync(base, { recursive: true });
+const plain = (text: string) => ({ text, eol: 'lf' as const, bom: false });
 
 test('reads and writes a file inside the workspace', () => {
   const s = setup();
@@ -85,7 +85,7 @@ test('reports line ending and BOM', () => {
 
 test('refuses invalid UTF-8, binary and mixed line endings without touching the file', () => {
   const s = setup();
-  const cases = [
+  const cases: [Buffer, RegExp][] = [
     [Buffer.from([0x63, 0x61, 0x66, 0xe9, 0x0a]), /not valid UTF-8/],
     [Buffer.from([0x61, 0x00, 0x62]), /Binary/],
     [Buffer.from('a\r\nb\nc'), /mixes line endings/],
@@ -100,7 +100,7 @@ test('refuses invalid UTF-8, binary and mixed line endings without touching the 
 });
 
 test('a failed write keeps the original bytes and leaves no temp file', () => {
-  const failing = { ...fs, writeSync() { throw new Error('No space left on device'); } };
+  const failing = fsWith({ writeSync() { throw new Error('No space left on device'); } });
   const s = setup({ fsImpl: failing });
   assert.throws(() => s.files.write('ws-1', s.file, plain('new text')), /No space/);
   assert.equal(fs.readFileSync(s.file, 'utf8'), 'hello\n');
@@ -110,14 +110,13 @@ test('a failed write keeps the original bytes and leaves no temp file', () => {
 
 test('a short write followed by a failure keeps the original bytes and leaves no temp file', () => {
   let calls = 0;
-  const flaky = {
-    ...fs,
-    writeSync(fd, buffer, offset, length) {
+  const flaky = fsWith({
+    writeSync(fd: number, buffer: Uint8Array, offset: number, length: number) {
       calls += 1;
       if (calls > 1) throw new Error('No space left on device');
       return fs.writeSync(fd, buffer, offset, Math.min(2, length));
     },
-  };
+  });
   const s = setup({ fsImpl: flaky });
   assert.throws(() => s.files.write('ws-1', s.file, plain('new text')), /No space/);
   assert.equal(fs.readFileSync(s.file, 'utf8'), 'hello\n');
@@ -126,12 +125,12 @@ test('a short write followed by a failure keeps the original bytes and leaves no
 });
 
 test('short writes are completed, and zero progress is an error', () => {
-  const slow = { ...fs, writeSync: (fd, buffer, offset, length) => fs.writeSync(fd, buffer, offset, Math.min(3, length)) };
+  const slow = fsWith({ writeSync: (fd: number, buffer: Uint8Array, offset: number, length: number) => fs.writeSync(fd, buffer, offset, Math.min(3, length)) });
   const s = setup({ fsImpl: slow });
   s.files.write('ws-1', s.file, plain('a longer text than three bytes'));
   assert.equal(fs.readFileSync(s.file, 'utf8'), 'a longer text than three bytes');
   cleanup(s);
-  const stuck = setup({ fsImpl: { ...fs, writeSync: () => 0 } });
+  const stuck = setup({ fsImpl: fsWith({ writeSync: () => 0 }) });
   assert.throws(() => stuck.files.write('ws-1', stuck.file, plain('x')), /whole file/);
   assert.equal(fs.readFileSync(stuck.file, 'utf8'), 'hello\n');
   assert.deepEqual(fs.readdirSync(stuck.root).sort(), ['a.txt', 'link.txt']);
@@ -139,7 +138,7 @@ test('short writes are completed, and zero progress is an error', () => {
 });
 
 test('a failed rename keeps the original bytes and leaves no temp file', () => {
-  const failing = { ...fs, renameSync() { throw new Error('rename failed'); } };
+  const failing = fsWith({ renameSync() { throw new Error('rename failed'); } });
   const s = setup({ fsImpl: failing });
   assert.throws(() => s.files.write('ws-1', s.file, plain('new text')), /rename failed/);
   assert.equal(fs.readFileSync(s.file, 'utf8'), 'hello\n');
@@ -156,7 +155,7 @@ test('a save keeps the file mode', () => {
 });
 
 test('a target swapped for a symlink out of the workspace is not written', () => {
-  const hooks = {};
+  const hooks: NonNullable<EditorFilesOptions['hooks']> = {};
   const s = setup({ hooks });
   hooks.beforeCommit = (_temp, real) => {
     fs.unlinkSync(real);
@@ -169,7 +168,7 @@ test('a target swapped for a symlink out of the workspace is not written', () =>
 });
 
 test('a directory swapped for a symlink out of the workspace is not written through', () => {
-  const hooks = {};
+  const hooks: NonNullable<EditorFilesOptions['hooks']> = {};
   const s = setup({ hooks });
   const sub = path.join(s.root, 'sub');
   const elsewhere = path.join(s.base, 'elsewhere');

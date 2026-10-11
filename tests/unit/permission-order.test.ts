@@ -1,44 +1,44 @@
-import test, { mock } from 'node:test';
+import test, { mock, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { createRequire } from 'node:module';
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-
-const require = createRequire(import.meta.url);
-const { createClaudeProvider } = require('../../src/agents/claude.cjs');
+import { createClaudeProvider } from '../../src/agents/claude.ts';
+import type { ChatEvent } from '../../src/shared/chat.ts';
 
 const WINDOW_MS = 30;
 
+type Arrival = { id: string; rpcId: string | number | null | undefined };
+
 // Starts a provider session whose "claude" is a script that records its arguments and waits.
 // arrivals lists { id, rpcId } in the order requests reached the server.
-async function startSession(t) {
+async function startSession(t: TestContext) {
   const dir = mkdtempSync(path.join(tmpdir(), 'cod-order-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const argvFile = path.join(dir, 'argv');
   const bin = path.join(dir, 'claude');
   writeFileSync(bin, `#!/bin/sh\nprintf '%s\\n' "$@" > "${argvFile}"\nexec sleep 30\n`);
   chmodSync(bin, 0o755);
-  const arrivals = [];
+  const arrivals: Arrival[] = [];
   const provider = createClaudeProvider({ bin, graceMs: 50, onArrival: arrival => arrivals.push(arrival) });
   t.after(() => provider.close());
   await provider.ready;
-  const events = [];
+  const events: ChatEvent[] = [];
   const session = provider.start({ cwd: dir, onEvent: event => events.push(event), onExit: () => {} });
   // Closing needs real timers, so they are restored first.
   t.after(async () => { mock.timers.reset(); await session.close(); });
-  let args = [];
+  let args: string[] = [];
   for (let i = 0; i < 400 && !args.includes('--mcp-config'); i++) {
     await new Promise(resolve => setTimeout(resolve, 10));
     try { args = readFileSync(argvFile, 'utf8').split('\n'); } catch { /* not written yet */ }
   }
   assert.ok(args.includes('--mcp-config'), 'the process was started with the MCP config');
-  const url = JSON.parse(args[args.indexOf('--mcp-config') + 1]).mcpServers.cod.url;
+  const url = (JSON.parse(args[args.indexOf('--mcp-config') + 1]) as { mcpServers: { cod: { url: string } } }).mcpServers.cod.url;
   return { events, session, url, arrivals };
 }
 
 // Waits, without timers (they are replaced in these tests), until the condition holds. Bounded.
-async function waitFor(condition, what) {
+async function waitFor(condition: () => boolean, what: string): Promise<void> {
   for (let i = 0; i < 5000; i++) {
     if (condition()) return;
     await new Promise(resolve => setImmediate(resolve));
@@ -46,19 +46,20 @@ async function waitFor(condition, what) {
   assert.fail(`timed out waiting for ${what}`);
 }
 
-function call(url, rpcId, command, signal) {
+function call(url: string, rpcId: number, command: string, signal?: AbortSignal): Promise<unknown> {
   return fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     signal,
     body: JSON.stringify({ jsonrpc: '2.0', id: rpcId, method: 'tools/call', params: { name: 'approve', arguments: { tool_name: 'Bash', input: { command } } } }),
-  }).then(async response => JSON.parse((await response.json()).result.content[0].text));
+  }).then(async response => JSON.parse(((await response.json()) as { result: { content: { text: string }[] } }).result.content[0].text) as unknown);
 }
 
-const requests = events => events.filter(event => event.type === 'permission-request');
+const requests = (events: ChatEvent[]) => events.filter((event): event is Extract<ChatEvent, { type: 'permission-request' }> => event.type === 'permission-request');
+const commandOf = (event: { input: unknown }): string => (event.input as { command: string }).command;
 
 // Sends id 2 and then id 1, each only after the previous one reached the server.
-async function sendReversed(url, arrivals) {
+async function sendReversed(url: string, arrivals: Arrival[]) {
   const second = call(url, 2, 'second');
   await waitFor(() => arrivals.length === 1, 'the first arrival');
   const first = call(url, 1, 'first');
@@ -78,7 +79,7 @@ test('requests that arrive in reverse order are shown by JSON-RPC id, and only a
   mock.timers.tick(WINDOW_MS - 1);
   assert.equal(requests(events).length, 0, 'still inside the window');
   mock.timers.tick(1);
-  assert.deepEqual(requests(events).map(event => event.input.command), ['first', 'second']);
+  assert.deepEqual(requests(events).map(commandOf), ['first', 'second']);
 });
 
 test('a request cancelled before the flush is never shown', async t => {
@@ -96,7 +97,7 @@ test('a request cancelled before the flush is never shown', async t => {
   await waitFor(() => events.some(event => event.type === 'permission-clear' && event.id === arrivals[0].id), 'the permission-clear of the cancelled request');
   assert.equal(requests(events).length, 0, 'nothing was shown yet');
   mock.timers.tick(WINDOW_MS);
-  assert.deepEqual(requests(events).map(event => event.input.command), ['kept']);
+  assert.deepEqual(requests(events).map(commandOf), ['kept']);
   assert.equal(requests(events)[0].id, arrivals[1].id);
 });
 

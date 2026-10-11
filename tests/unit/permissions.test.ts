@@ -1,25 +1,35 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { createRequire } from 'node:module';
+import { createPermissionHost, type PermissionRequest } from '../../src/agents/permission-host.ts';
+import { Chats } from '../../src/agents/chats.ts';
+import { createClaudeProvider } from '../../src/agents/claude.ts';
+import type { AgentProvider, StartOptions } from '../../src/agents/provider.ts';
+import { createChat, reduce, statusOf, permissionText, queueHint, promptFocusTarget } from '../../src/renderer/chat-model.ts';
+import type { ChatEvent } from '../../src/shared/chat.ts';
 
-const require = createRequire(import.meta.url);
-const { createPermissionHost } = require('../../src/agents/permission-host.cjs');
-const { Chats } = require('../../src/agents/chats.cjs');
-const { createClaudeProvider } = require('../../src/agents/claude.cjs');
-const { createChat, reduce, statusOf, permissionText, queueHint, promptFocusTarget } = require('../../src/renderer/chat-model.js');
-
-async function rpc(url, body) {
-  const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  return { status: response.status, json: response.status === 200 ? await response.json() : null };
+// The JSON that comes back from the MCP server; the tests look at a few fields only.
+interface RpcBody {
+  result: { protocolVersion: string; tools: { name: string }[]; content: { text: string }[] };
+  error: { code: number };
 }
+
+async function rpc(url: string, body: object): Promise<{ status: number; json: RpcBody }> {
+  const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  // A non-200 answer has no body; the tests only look at its status then.
+  return { status: response.status, json: (response.status === 200 ? await response.json() : null) as RpcBody };
+}
+
+// The URL of the MCP endpoint inside the config that register() hands out.
+const urlOf = (config: string): string => (JSON.parse(config) as { mcpServers: { cod: { url: string } } }).mcpServers.cod.url;
 
 test('permission host: lists one tool and relays a call to the registered handler', async () => {
   const host = createPermissionHost();
   await host.ready;
-  const seen = [];
+  const seen: PermissionRequest[] = [];
   const registration = host.register(async request => { seen.push(request); return { behavior: 'allow', updatedInput: request.input }; });
-  const url = JSON.parse(registration.config).mcpServers.cod.url;
+  assert.ok(registration);
+  const url = urlOf(registration.config);
   assert.equal(registration.tool, 'mcp__cod__approve');
   const init = await rpc(url, { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26' } });
   assert.equal(init.json.result.protocolVersion, '2025-03-26');
@@ -37,23 +47,23 @@ test('permission host: lists one tool and relays a call to the registered handle
 });
 
 function fakeProvider() {
-  const answers = [];
-  const provider = {
+  const answers: [string, { allow: boolean; message?: string }][] = [];
+  const started: { options?: StartOptions } = {};
+  const provider: AgentProvider = {
     start(options) {
-      const session = { alive: true, interrupting: false, send() {}, close() {}, interrupt() {}, answerPermission: (id, answer) => answers.push([id, answer]) };
-      provider.options = options;
-      return session;
+      started.options = options;
+      return { alive: true, interrupting: false, send() {}, close() {}, interrupt() {}, answerPermission: (id, answer) => { answers.push([id, answer]); } };
     },
   };
-  return { provider, answers };
+  return { provider, answers, started };
 }
 
 test('Chats: allow for this session answers the same request again without asking', () => {
-  const { provider, answers } = fakeProvider();
-  const emitted = [];
+  const { provider, answers, started } = fakeProvider();
+  const emitted: ChatEvent[] = [];
   const chats = new Chats({ provider, folders: { list: () => [] }, emit: (_id, event) => emitted.push(event), home: '/h' });
   chats.send('w', 'go');
-  const ask = (id, command) => provider.options.onEvent({ type: 'permission-request', id, tool: 'Bash', input: { command } });
+  const ask = (id: string, command: string) => started.options?.onEvent({ type: 'permission-request', id, tool: 'Bash', input: { command } });
   ask('r1', 'ls');
   assert.equal(emitted.length, 1);
   chats.answerPermission('w', 'r1', { allow: true, scope: 'session' });
@@ -73,20 +83,20 @@ test('chat model: a pending request means needs input and every turn ending clea
   assert.equal(statusOf(state), 'Working');
   state = reduce(state, { type: 'permission-request', id: 'a', tool: 'Bash', input: { command: 'ls' } });
   assert.equal(statusOf(state), 'Needs input');
-  assert.equal(permissionText(state.permission.input), 'ls');
-  assert.equal(reduce(state, { type: 'permission-clear', id: 'other' }).permission.id, 'a');
+  assert.equal(permissionText(state.permission?.input), 'ls');
+  assert.equal(reduce(state, { type: 'permission-clear', id: 'other' }).permission?.id, 'a');
   assert.equal(reduce(state, { type: 'permission-answered', id: 'a' }).permission, null);
-  for (const type of ['turn-end', 'interrupted', 'error']) assert.equal(reduce(state, { type }).permission, null);
+  for (const event of [{ type: 'turn-end' }, { type: 'interrupted' }, { type: 'error', kind: 'failed', message: 'x' }] as const) assert.equal(reduce(state, event).permission, null);
   assert.equal(statusOf(createChat()), 'Ready');
 });
 
 test('chat model: requests queue in order and needs input lasts until the queue is empty', () => {
-  const ask = (state, id) => reduce(state, { type: 'permission-request', id, tool: 'Bash', input: { command: id } });
+  const ask = (state: ReturnType<typeof createChat>, id: string) => reduce(state, { type: 'permission-request', id, tool: 'Bash', input: { command: id } });
   let state = ask(ask(ask(createChat(), 'a'), 'b'), 'c');
-  assert.equal(state.permission.id, 'a');
+  assert.equal(state.permission?.id, 'a');
   assert.equal(queueHint(state.permissions.length), '1 of 3');
   state = reduce(state, { type: 'permission-answered', id: 'a' });
-  assert.equal(state.permission.id, 'b');
+  assert.equal(state.permission?.id, 'b');
   assert.equal(statusOf(state), 'Needs input');
   state = reduce(state, { type: 'permission-clear', id: 'c' });
   assert.equal(queueHint(state.permissions.length), '');
@@ -103,7 +113,7 @@ test('chat model: focus goes to the current choice, or to the denial form when i
   assert.deepEqual(promptFocusTarget({ denying: false, choice: undefined, count: 3 }), { kind: 'choice', index: 0 });
 });
 
-function raw(url, headers) {
+function raw(url: string, headers: Record<string, string>): Promise<number | undefined> {
   const target = new URL(url);
   return new Promise((resolve, reject) => {
     const req = http.request({ host: '127.0.0.1', port: target.port, path: target.pathname, method: 'POST', headers: { 'Content-Type': 'application/json', ...headers } }, res => {
@@ -119,7 +129,8 @@ test('permission host: a hostile Origin is refused, no Origin passes, a wrong Ho
   const host = createPermissionHost();
   await host.ready;
   const registration = host.register(async () => ({ behavior: 'deny', message: 'x' }));
-  const url = JSON.parse(registration.config).mcpServers.cod.url;
+  assert.ok(registration);
+  const url = urlOf(registration.config);
   assert.equal(await raw(url, {}), 200);
   assert.equal(await raw(url, { Origin: 'https://evil.example' }), 403);
   assert.equal(await raw(url, { Origin: 'null' }), 403);
@@ -131,7 +142,7 @@ test('permission host: a hostile Origin is refused, no Origin passes, a wrong Ho
 test('claude provider: a spawn failure unregisters the permission endpoint', async () => {
   const provider = createClaudeProvider({ bin: '/nonexistent/cod-claude' });
   await provider.ready;
-  const events = [];
+  const events: string[] = [];
   provider.start({ cwd: process.cwd(), onEvent: event => events.push(event.type), onExit: () => {} });
   await new Promise(resolve => setTimeout(resolve, 300));
   assert.ok(events.includes('error'));

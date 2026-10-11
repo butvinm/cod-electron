@@ -1,10 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createRequire } from 'node:module';
+import { createTabs, open, activate, close, displayPath, moveChoice, errorMessage, attemptSave, confirmOrKeep, createLocks, editFilter } from '../../src/renderer/editor-tabs.ts';
 
-const { createTabs, open, activate, close, displayPath, moveChoice, errorMessage, attemptSave, confirmOrKeep, createLocks, editFilter } = createRequire(import.meta.url)('../../src/renderer/editor-tabs.js');
-
-const opened = (...files) => files.reduce(open, createTabs());
+const opened = (...files: string[]) => files.reduce(open, createTabs());
 
 test('opening a new file adds a tab and activates it', () => {
   const t = opened('/a', '/b');
@@ -63,7 +61,7 @@ test('errorMessage strips the IPC wrapper', () => {
 // Both entry points (Cmd+S and the close prompt's Save) go through attemptSave.
 for (const entry of ['Cmd+S', 'close prompt Save']) {
   test(`a failed save from ${entry} shows a message, restores focus and reports failure`, async () => {
-    const events = [];
+    const events: unknown[] = [];
     const ok = await attemptSave({
       name: 'a.txt',
       write: async () => { throw new Error("Error invoking remote method 'editor:write': Error: disk full"); },
@@ -76,7 +74,7 @@ for (const entry of ['Cmd+S', 'close prompt Save']) {
 }
 
 test('a successful save clears the message', async () => {
-  const events = [];
+  const events: unknown[] = [];
   const ok = await attemptSave({ name: 'a.txt', write: async () => {}, report: m => events.push(m), restoreFocus: () => events.push('focus') });
   assert.equal(ok, true);
   assert.deepEqual(events, [null]);
@@ -89,7 +87,7 @@ test('moveChoice wraps both ways', () => {
 });
 
 test('a confirmation that fails keeps the app open and reports the reason', async () => {
-  const messages = [];
+  const messages: string[] = [];
   assert.equal(await confirmOrKeep(async () => { throw new Error('boom'); }, m => messages.push(m)), false);
   assert.deepEqual(messages, ['Could not check for unsaved files: boom']);
 });

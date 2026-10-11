@@ -1,19 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { EditorState } from '@codemirror/state';
+import { EditorState, type Transaction } from '@codemirror/state';
 import { history, undo, redo } from '@codemirror/commands';
-import { lockExtension, withLocked } from '../../src/renderer/editor-lock.mjs';
+import { lockExtension, withLocked } from '../../src/renderer/editor-lock.ts';
 
-const make = text => EditorState.create({ doc: text, extensions: [history(), lockExtension(false)] });
-const run = (command, state) => {
+const make = (text: string) => EditorState.create({ doc: text, extensions: [history(), lockExtension(false)] });
+const run = (command: (target: { state: EditorState; dispatch: (transaction: Transaction) => void }) => boolean, state: EditorState) => {
   let next = state;
   const handled = command({ state, dispatch: transaction => { next = transaction.state; } });
   return { handled, next };
 };
-const typed = state => state.update({ changes: { from: 0, insert: 'x' }, userEvent: 'input.type' }).state;
+const typed = (state: EditorState) => state.update({ changes: { from: 0, insert: 'x' }, userEvent: 'input.type' }).state;
 
 // A listed tab has unsaved edits; a previously clean tab has none yet.
-for (const [name, start] of [['a tab with unsaved edits', typed(make('abc'))], ['a previously clean tab', make('abc')]]) {
+const starts: [string, EditorState][] = [['a tab with unsaved edits', typed(make('abc'))], ['a previously clean tab', make('abc')]];
+for (const [name, start] of starts) {
   test(`Undo and Redo are refused while ${name} is locked`, () => {
     const edited = start.doc.toString() === 'abc' ? typed(start) : start;
     const undone = run(undo, edited).next;

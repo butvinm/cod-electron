@@ -1,14 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createRequire } from 'node:module';
-
-const { createQuitFlow } = createRequire(import.meta.url)('../../src/quit-flow.cjs');
+import { createQuitFlow } from '../../src/quit-flow.ts';
 
 const makeEvent = () => ({ prevented: false, preventDefault() { this.prevented = true; } });
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
-function setup(answer) {
-  const log = [];
+function setup(answer: boolean) {
+  const log: string[] = [];
   const flow = createQuitFlow({
     askPage: async () => { log.push('ask'); return answer; },
     chatGuard: event => { log.push('guard'); event.preventDefault(); },
