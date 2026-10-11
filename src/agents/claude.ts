@@ -177,12 +177,14 @@ export function createClaudeProvider({ bin = process.env.COD_CLAUDE_BIN || 'clau
         turnActive = true;
         child.stdin.write(`${JSON.stringify({ type: 'user', message: { role: 'user', content: text } })}\n`);
       },
-      answerPermission(id, { allow, message }) {
+      answerPermission(id, { allow, message, answers }) {
         const entry = permissions.get(id);
         if (!entry) return;
         permissions.delete(id);
+        // AskUserQuestion: Claude reads the person's answers from updatedInput.answers.
+        const updatedInput = answers && entry.input && typeof entry.input === 'object' ? { ...entry.input, answers } : entry.input;
         entry.resolve(allow
-          ? { behavior: 'allow', updatedInput: entry.input }
+          ? { behavior: 'allow', updatedInput }
           : { behavior: 'deny', message: typeof message === 'string' && message ? message : 'The user denied this request.' });
       },
       interrupt() {

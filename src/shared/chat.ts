@@ -22,6 +22,8 @@ export interface PermissionAnswer {
   allow: boolean;
   message?: string;
   scope?: 'once' | 'session';
+  // For AskUserQuestion: question text -> chosen label, labels joined with ", ", or typed text.
+  answers?: Record<string, string>;
 }
 
 // Where the chat of a workspace runs.

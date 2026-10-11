@@ -130,7 +130,9 @@ handle('chat:send', async (workspaceId, text) => {
 handle('chat:permission', (workspaceId, id, answer) => {
   if (typeof id !== 'string' || !answer || typeof answer.allow !== 'boolean') throw new Error('Bad permission answer');
   const message = typeof answer.message === 'string' ? answer.message.slice(0, 2000) : undefined;
-  chats.answerPermission(String(workspaceId), id, { allow: answer.allow, message, scope: answer.scope === 'session' ? 'session' : 'once' });
+  const given = answer.answers;
+  const answers = given && typeof given === 'object' && Object.values(given).every(value => typeof value === 'string') ? { ...given } : undefined;
+  chats.answerPermission(String(workspaceId), id, { allow: answer.allow, message, scope: answer.scope === 'session' ? 'session' : 'once', answers });
 });
 handle('chat:interrupt', workspaceId => { chats.interrupt(String(workspaceId)); });
 
