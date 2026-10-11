@@ -67,3 +67,12 @@ test('answering a question leaves the queue and stays in the transcript', () => 
   assert.equal(item.kind, 'questions');
   assert.deepEqual(item.kind === 'questions' && item.answers, { 'Which size?': 'Small' });
 });
+
+test('declining a question leaves the queue and keeps a declined item', () => {
+  let state = reduce(createChat(), { type: 'permission-request', id: 'p1', tool: 'AskUserQuestion', input: { questions: [single] } });
+  state = reduce(state, { type: 'questions-declined', id: 'p1', questions: [single] });
+  assert.equal(state.permission, null);
+  const item = state.items[state.items.length - 1];
+  assert.equal(item.kind, 'declined');
+  assert.deepEqual(item.kind === 'declined' && item.questions, [single]);
+});
