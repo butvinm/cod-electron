@@ -1,11 +1,11 @@
 ---
 name: plan-iteration
-description: PM procedure for Cod's daily cycle and stakeholder meetings. Keep a ranked queue of ready stories, run the team on its own between meetings, and at each meeting demo what finished, get accept/reject, answer escalations and get the next pick. Use when the stakeholder opens a session, when choosing the next story, or when deciding whether something needs the stakeholder.
+description: PM procedure for Cod's sprints and stakeholder meetings. A PM session is a sprint - start it from the last minutes and the queue, run the team on its own, and end it with a meeting (obligations, demo and accept/reject, escalations, minutes, next sprint's obligations). Use at the start of a session, when choosing the next story, when deciding whether something needs the stakeholder, and when the stakeholder asks for the meeting.
 ---
 
-# Plan and run the daily cycle
+# Plan and run a sprint
 
-An iteration is one day. There are no weekly sprints. The stakeholder meets the PM, the team works on its own until the next meeting, and every accepted story ships the same day.
+A PM session is a sprint. It has no fixed length. At the start, read `AGENTS.md`, the last minutes in `docs/meetings/` and the pinned `Queue` issue; the obligations in the last minutes are the sprint goal. The team works on its own until the obligations are met, then the PM asks the stakeholder for the meeting. The meeting ends the session; the next sprint starts in a new session.
 
 ## The queue
 
@@ -33,7 +33,7 @@ Waiting for acceptance: #<n>, ...
 
 ## Meeting
 
-A meeting happens when the stakeholder opens the PM session, at most once a day unless they ask for more. Keep it under about 15 minutes. Agenda:
+The meeting closes the sprint, in the same session. It happens when the obligations are met (or clearly will not be) and the stakeholder is available. Keep it under about 15 minutes. Agenda:
 
 0. Previous obligations: read the last minutes in `docs/meetings/` and mark each obligation met or missed, with evidence. A missed one gets a reason and a new date.
 1. Demo: for each story that reached "clip PASS" since the last meeting, the `report-to-stakeholder` report. Ask to accept or reject each one.
