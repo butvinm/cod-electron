@@ -54,4 +54,6 @@ export interface PermissionAnswer {
 export interface ChatInfo {
   cwd: string;
   home: boolean;
+  // One line about a problem with the settings, when the default folder could not be used.
+  notice?: string;
 }

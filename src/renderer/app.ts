@@ -347,6 +347,12 @@ async function openFolder(): Promise<void> {
 
 function newChat(): void {
   const id = state.activeId;
+  // Cmd-N on an open chat replaces it with a fresh one. The old session stays resumable from the CLI.
+  if (chatShown[id] && chats[id]) {
+    chats[id].element.remove();
+    delete chats[id];
+    window.cod.chat.reset(id).catch(console.error);
+  }
   chatShown[id] = true;
   render();
   chatOf(id).composer.focus();
