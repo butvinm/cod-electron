@@ -1,6 +1,8 @@
 import type { Action, DirEntry } from '../shared/ipc.ts';
 import { createState, freeze, add, activate, step, close, type WorkspacesState } from './workspaces.ts';
-import { visibleRows, navigate, createPanelState, type PanelState } from './project-tree.ts';
+import { visibleRows, navigate, createPanelState, ancestorsOf, revealStep, type PanelState } from './project-tree.ts';
+import { iconNameFor } from './file-icon-names.ts';
+import { fileIcon } from './file-icons.ts';
 import { confirmOrKeep } from './editor-tabs.ts';
 import * as Editor from './editor.ts';
 import * as Chat from './chat.ts';
@@ -102,9 +104,9 @@ function onPanelKey(event: KeyboardEvent): void {
   else if (result.open) openFile(id, result.open);
 }
 
-function projectRow(id: string, row: ReturnType<typeof rowsOf>[number], selected: string | null): HTMLElement {
+function projectRow(id: string, row: ReturnType<typeof rowsOf>[number], selected: string | null, active: string | null): HTMLElement {
   const props: Record<string, string> = {
-    class: 'project-entry',
+    class: row.path === active ? 'project-entry open-file' : 'project-entry',
     role: 'treeitem',
     testid: 'project-entry',
     'aria-selected': String(row.path === selected),
@@ -119,23 +121,49 @@ function projectRow(id: string, row: ReturnType<typeof rowsOf>[number], selected
       tabindex: '-1',
     })
     : el('span', { class: 'project-entry-toggle' });
-  const node = el('div', props, lead, el('span', { class: 'project-entry-label', testid: 'project-entry-label', text: row.name }));
+  const node = el('div', props, lead, fileIcon(iconNameFor(row.name, row.isDirectory, row.expanded)), el('span', { class: 'project-entry-label', testid: 'project-entry-label', text: row.name }));
   // Set through the CSSOM, because the CSP blocks inline style attributes.
   node.style.paddingLeft = `${8 + row.depth * 16}px`;
   node.addEventListener('click', () => { void clickRow(id, row); });
   return node;
 }
 
+// The file shown in the active editor tab of the shown workspace, read from the editor's own tab strip.
+function activeFileOf(): string | null {
+  return editor.element.querySelector<HTMLElement>('.editor-tabs [aria-selected="true"]')?.dataset.path ?? null;
+}
+
+// Zed's auto_reveal_entries: when another file becomes active, expand its parents and select its row.
+const revealed: Record<string, string | null | undefined> = {};
+async function revealActive(): Promise<void> {
+  const id = state.activeId;
+  const file = activeFileOf();
+  const step = revealStep(revealed[id], file);
+  revealed[id] = file;
+  if (step.render) render();
+  if (step.reveal === null) return;
+  const ps = panelOf(id);
+  for (const dir of ancestorsOf(rootsOf[id] || [], step.reveal)) {
+    if (!listings[dir]) await loadDir(dir);
+    ps.expanded.add(dir);
+  }
+  if (revealed[id] !== file) return;
+  ps.selected = step.reveal;
+  render();
+}
+new MutationObserver(() => { void revealActive(); }).observe(editor.element, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-selected'] });
+
 function projectPanel(id: string): HTMLElement {
   const ps = panelOf(id);
   const tree = el('div', { class: 'project-tree', role: 'tree', 'aria-label': 'Project' });
   let wrapper: HTMLElement | null = null;
+  const active = activeFileOf();
   for (const row of rowsOf(id)) {
     if (row.depth === 0 || !wrapper) {
       wrapper = el('div', { class: 'project-root', role: 'group', testid: 'project-root', 'data-path': row.path });
       tree.append(wrapper);
     }
-    wrapper.append(projectRow(id, row, ps.selected));
+    wrapper.append(projectRow(id, row, ps.selected, active));
   }
   const panel = el('div', { class: 'project-panel', testid: 'project-panel', tabindex: '0', 'aria-label': 'Project panel' }, tree);
   panel.addEventListener('keydown', onPanelKey);
