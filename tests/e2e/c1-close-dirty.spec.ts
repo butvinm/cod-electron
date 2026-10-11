@@ -47,8 +47,7 @@ async function focusPanel(page: Page) {
 async function addFolder(page: Page, folder: string) {
   await focusPanel(page);
   const panel = page.getByTestId('project-panel');
-  await panel.getByTestId('project-add-folder').focus();
-  await page.keyboard.press('Enter');
+  await page.keyboard.press(`${modifier}+Shift+a`);
   const row = atPath(panel.getByTestId('project-entry'), folder);
   await expect(row).toBeVisible();
   await row.click();

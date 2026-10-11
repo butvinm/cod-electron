@@ -5,9 +5,13 @@ import { confirmOrKeep } from './editor-tabs.ts';
 import * as Editor from './editor.ts';
 import * as Chat from './chat.ts';
 import * as FileFinder from './file-finder.ts';
+import * as RecentPicker from './recent-picker.ts';
+import * as StartScreen from './start-screen.ts';
 
 const root = document.getElementById('cod-window') as HTMLElement;
 const finderRoot = document.getElementById('finder-root') as HTMLElement;
+const pickerRoot = document.getElementById('picker-root') as HTMLElement;
+const mac = navigator.userAgent.includes('Macintosh');
 let state: WorkspacesState = createState();
 
 // Project panel state lives per workspace. The folders themselves live in the main process.
@@ -25,6 +29,11 @@ const editor = Editor.create({
 // Each workspace has one chat. Its DOM is kept, so render() only moves it into the new area.
 const chats: Record<string, Chat.ChatView | undefined> = {};
 const chatOf = (id: string): Chat.ChatView => (chats[id] = chats[id] || Chat.create({ workspaceId: id, chatApi: window.cod.chat }));
+
+// Workspaces whose chat is open in the main area. Without a chat, an empty main area shows the start screen.
+const chatShown: Record<string, boolean | undefined> = {};
+// Recently opened folders, most recent first, mirrored from the main process.
+let recents: string[] = [];
 
 const panelOf = (id: string): PanelState => (panels[id] = panels[id] || createPanelState());
 
@@ -118,8 +127,6 @@ function projectRow(id: string, row: ReturnType<typeof rowsOf>[number], selected
 
 function projectPanel(id: string): HTMLElement {
   const ps = panelOf(id);
-  const addButton = el('button', { class: 'project-add', testid: 'project-add-folder', 'aria-label': 'Add folder to workspace', title: 'Add folder', text: 'Add Folder' });
-  addButton.addEventListener('click', () => { window.cod.project.addFolders(id).catch(console.error); });
   const tree = el('div', { class: 'project-tree', role: 'tree', 'aria-label': 'Project' });
   let wrapper: HTMLElement | null = null;
   for (const row of rowsOf(id)) {
@@ -129,7 +136,7 @@ function projectPanel(id: string): HTMLElement {
     }
     wrapper.append(projectRow(id, row, ps.selected));
   }
-  const panel = el('div', { class: 'project-panel', testid: 'project-panel', tabindex: '0', 'aria-label': 'Project panel' }, el('div', { class: 'project-header' }, addButton), tree);
+  const panel = el('div', { class: 'project-panel', testid: 'project-panel', tabindex: '0', 'aria-label': 'Project panel' }, tree);
   panel.addEventListener('keydown', onPanelKey);
   return panel;
 }
@@ -138,7 +145,6 @@ function render(): void {
   // Rebuilding the DOM drops focus and scroll, so remember them first.
   const focused = document.activeElement;
   const plusHadFocus = testidOf(focused) === 'workspace-add';
-  const addHadFocus = testidOf(focused) === 'project-add-folder';
   const panelHadFocus = testidOf(focused) === 'project-panel';
   const restoreEditor = editor.detach();
   const chatFocus = focused instanceof HTMLElement && chats[state.activeId]?.element.contains(focused) ? focused : null;
@@ -176,7 +182,8 @@ function render(): void {
   const area = el('div', { class: 'workspace-area', testid: 'workspace-area', 'data-workspace-id': state.activeId });
   area.append(editor.element);
   editor.show(state.activeId);
-  area.append(chatOf(state.activeId).element);
+  if (chatShown[state.activeId]) area.append(chatOf(state.activeId).element);
+  else area.append(startScreen());
   const body = el('div', { class: 'workbench' });
   const panel = panelOf(state.activeId).open ? projectPanel(state.activeId) : null;
   if (panel) body.append(panel);
@@ -195,10 +202,10 @@ function render(): void {
   // Focus goes where it was, or to the panel when asked, otherwise to the active tab.
   // While the finder is open it keeps focus, whatever redraws underneath.
   if (finder.isOpen()) finder.focus();
+  else if (picker.isOpen()) picker.focus();
   else if (panel && focusPanelNext) panel.focus({ preventScroll: true });
   else if (editorHadFocus) editor.focus();
   else if (chatFocus) chatFocus.focus({ preventScroll: true });
-  else if (panel && addHadFocus) panel.querySelector<HTMLElement>('.project-add')?.focus({ preventScroll: true });
   else if (panel && panelHadFocus) panel.focus({ preventScroll: true });
   else (plusHadFocus ? plus : active)?.focus({ preventScroll: true });
   focusPanelNext = false;
@@ -208,13 +215,17 @@ function update(next: WorkspacesState): void {
   const gone = state.workspaces.filter(w => !next.workspaces.some(n => n.id === w.id));
   // The finder searches one workspace, so switching or closing one closes it.
   const switched = next.activeId !== state.activeId;
-  if (switched) finder.close();
+  if (switched) {
+    finder.close();
+    picker.close();
+  }
   state = next;
   for (const ws of gone) {
     delete panels[ws.id];
     delete rootsOf[ws.id];
     editor.forget(ws.id);
     delete chats[ws.id];
+    delete chatShown[ws.id];
     window.cod.project.forget(ws.id).catch(console.error);
   }
   render();
@@ -261,15 +272,59 @@ const finder = FileFinder.create({
   container: finderRoot,
   workspaceId: () => state.activeId,
   openFile,
-  restoreFocus(previous) {
-    let target = previous;
-    if (!target || !target.isConnected) {
-      const selector = FileFinder.focusSelector(previous);
-      target = (selector && root.querySelector(selector)) || root.querySelector('[role="tab"][aria-selected="true"]');
-    }
-    if (target instanceof HTMLElement) target.focus({ preventScroll: true });
-  },
+  restoreFocus,
 });
+
+function restoreFocus(previous: Element | null): void {
+  let target = previous;
+  if (!target || !target.isConnected) {
+    const selector = FileFinder.focusSelector(previous);
+    target = (selector && root.querySelector(selector)) || root.querySelector('[role="tab"][aria-selected="true"]');
+  }
+  if (target instanceof HTMLElement) target.focus({ preventScroll: true });
+}
+
+const picker = RecentPicker.create({
+  container: pickerRoot,
+  load: () => window.cod.project.recent(),
+  choose: folder => { void window.cod.project.addPaths(state.activeId, [folder]); },
+  restoreFocus,
+});
+
+function startScreen(): HTMLElement {
+  return StartScreen.create({
+    mac,
+    recent: recents,
+    run: action => { void actions[action](); },
+    openRecent: folder => { void openFolders([folder]); },
+  });
+}
+
+async function refreshRecents(): Promise<void> {
+  try { recents = await window.cod.project.recent(); } catch (error) { console.error(error); }
+  render();
+}
+
+// Zed opens a folder in a new window unless the current one is empty. A workspace tab is Cod's window.
+async function openFolders(folders: string[]): Promise<void> {
+  if (folders.length === 0) return;
+  if ((rootsOf[state.activeId] || []).length > 0) update(add(state));
+  await window.cod.project.addPaths(state.activeId, folders);
+}
+
+async function openFolder(): Promise<void> {
+  await openFolders(await window.cod.project.pickFolders());
+}
+
+function newChat(): void {
+  const id = state.activeId;
+  chatShown[id] = true;
+  render();
+  chatOf(id).composer.focus();
+}
+
+// The start screen is on screen when the workspace shows no chat and the editor has nothing open.
+const startVisible = (): boolean => !chatShown[state.activeId] && !editor.element.classList.contains('has-content');
 
 // The index finished a rebuild: re-run the current query so results are never stale.
 window.cod.project.onFinderRebuilt(workspaceId => finder.refresh(workspaceId));
@@ -277,7 +332,16 @@ window.cod.project.onFinderRebuilt(workspaceId => finder.refresh(workspaceId));
 const actions: Record<Action, () => unknown> = {
   save: () => editor.save(),
   'close-tab': () => editor.closeActive(),
-  'file-finder': () => finder.toggle(),
+  'file-finder': () => { picker.close(); finder.toggle(); },
+  'open-folder': openFolder,
+  'open-recent': () => { finder.close(); picker.toggle(); },
+  'new-chat': newChat,
+  'add-folder': () => window.cod.project.addFolders(state.activeId).catch(console.error),
+  'recent-1': () => startVisible() && openFolders(recents.slice(0, 1)),
+  'recent-2': () => startVisible() && openFolders(recents.slice(1, 2)),
+  'recent-3': () => startVisible() && openFolders(recents.slice(2, 3)),
+  'recent-4': () => startVisible() && openFolders(recents.slice(3, 4)),
+  'recent-5': () => startVisible() && openFolders(recents.slice(4, 5)),
   add: () => update(add(state)),
   next: () => update(step(state, 1)),
   previous: () => update(step(state, -1)),
@@ -293,10 +357,16 @@ window.cod.project.onRootsChanged(async ({ workspaceId, roots }) => {
   await Promise.all(fresh.map(loadDir));
   const ps = panelOf(workspaceId);
   for (const r of fresh) ps.expanded.add(r);
+  // The first folder of a workspace opens the project panel.
+  if (known.length === 0 && roots.length > 0) ps.open = true;
   rootsOf[workspaceId] = roots;
   chats[workspaceId]?.refreshInfo();
-  render();
+  await refreshRecents();
 });
+
+// Any folder action reorders the list, also when no folder was added to a workspace.
+window.cod.project.onRecentChanged(() => { void refreshRecents(); });
+void refreshRecents();
 
 // Esc interrupts the running reply of the active workspace, wherever focus is in it.
 // Order: an open permission prompt first (Esc denies), then the save prompt and the file
@@ -310,7 +380,7 @@ window.addEventListener('keydown', event => {
     chat.interrupt();
     return;
   }
-  if (editor.promptOpen() || finder.isOpen()) return;
+  if (editor.promptOpen() || finder.isOpen() || picker.isOpen()) return;
   if (chat?.interrupt()) event.preventDefault();
 }, true);
 
