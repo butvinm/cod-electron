@@ -132,25 +132,25 @@ export function highlightRuns(language: string, code: string): CodeRun[] {
   return runs;
 }
 
-const entities: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
-
 // Decodes one HTML entity such as "&amp;" or "&#65;" to text. Unknown ones stay as written.
+// Named entities go through the browser's own table. A DOMParser document never runs scripts.
 export function decodeEntity(entity: string): string {
-  const match = /^&(?:#(\d{1,7})|#[xX]([0-9a-fA-F]{1,6})|([A-Za-z]+));$/.exec(entity);
+  const match = /^&(?:#(\d{1,7})|#[xX]([0-9a-fA-F]{1,6})|([A-Za-z][A-Za-z0-9]*));$/.exec(entity);
   if (!match) return entity;
-  if (match[3]) return Object.hasOwn(entities, match[3]) ? entities[match[3]] : entity;
+  if (match[3]) return typeof DOMParser === 'undefined' ? entity : (new DOMParser().parseFromString(entity, 'text/html').documentElement.textContent ?? entity);
   const code = match[1] ? Number(match[1]) : parseInt(match[2], 16);
   return code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff) ? String.fromCodePoint(code) : entity;
 }
 
 // A fence inside a list or quote comes as one text segment per line, without the container prefixes.
 export function joinCodeSegments(segments: string[]): string {
-  return segments.map(segment => segment.replace(/\n$/, '')).join('\n');
+  // The newline at the end of a segment is the line break before the next segment. The last one is kept as it is.
+  return segments.map((segment, index) => (index < segments.length - 1 ? segment.replace(/\n$/, '') : segment)).join('\n');
 }
 
 // A link destination as written: entities and backslash escapes become the characters they stand for.
 export function linkDestination(raw: string): string {
-  return raw.replace(/\\([!-/:-@[-`{-~])|&(?:#\d{1,7}|#[xX][0-9a-fA-F]{1,6}|[A-Za-z]+);/g, (match, escaped: string | undefined) => escaped ?? decodeEntity(match));
+  return raw.replace(/\\([!-/:-@[-`{-~])|&(?:#\d{1,7}|#[xX][0-9a-fA-F]{1,6}|[A-Za-z][A-Za-z0-9]*);/g, (match, escaped: string | undefined) => escaped ?? decodeEntity(match));
 }
 
 // Only these links are handed to the system browser. Anything else shows as plain text.

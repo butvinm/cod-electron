@@ -57,14 +57,16 @@ function destination(src: string, node: SyntaxNode): string {
 // The link definitions ("[label]: url") of a document, by normalized label.
 export function referenceTargets(source: string): Map<string, string> {
   const found = new Map<string, string>();
-  for (const node of children(gfm.parse(source).topNode)) {
-    if (node.name !== 'LinkReference') continue;
-    const kids = children(node);
-    const label = kids.find(kid => kid.name === 'LinkLabel');
-    const url = kids.find(kid => kid.name === 'URL');
-    const key = label ? labelKey(source.slice(label.from + 1, label.to - 1)) : '';
-    if (key && url && !found.has(key)) found.set(key, destination(source, url));
-  }
+  gfm.parse(source).iterate({
+    enter: entered => {
+      if (entered.name !== 'LinkReference') return;
+      const kids = children(entered.node);
+      const label = kids.find(kid => kid.name === 'LinkLabel');
+      const url = kids.find(kid => kid.name === 'URL');
+      const key = label ? labelKey(source.slice(label.from + 1, label.to - 1)) : '';
+      if (key && url && !found.has(key)) found.set(key, destination(source, url));
+    },
+  });
   return found;
 }
 

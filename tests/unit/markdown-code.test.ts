@@ -43,8 +43,18 @@ test('shellRuns copes with an unterminated string', () => {
   assert.deepEqual(cut(code, shellRuns(code)), ['string:"open']);
 });
 
-test('decodeEntity decodes known entities and leaves the rest', () => {
+// Node has no DOMParser. This stand-in knows two names and returns anything else unchanged, as the browser does.
+class FakeDOMParser {
+  parseFromString(entity: string): { documentElement: { textContent: string } } {
+    const names: Record<string, string> = { '&amp;': '&', '&copy;': '©' };
+    return { documentElement: { textContent: names[entity] ?? entity } };
+  }
+}
+Object.assign(globalThis, { DOMParser: FakeDOMParser });
+
+test('decodeEntity decodes named entities with the DOM parser and numeric ones itself', () => {
   assert.equal(decodeEntity('&amp;'), '&');
+  assert.equal(decodeEntity('&copy;'), '©');
   assert.equal(decodeEntity('&#65;'), 'A');
   assert.equal(decodeEntity('&#x41;'), 'A');
   assert.equal(decodeEntity('&bogus;'), '&bogus;');
@@ -65,8 +75,15 @@ test('joinCodeSegments keeps every line of a fence split by container prefixes',
   assert.equal(joinCodeSegments([]), '');
 });
 
+test('joinCodeSegments keeps blank lines at the end of the last segment', () => {
+  assert.equal(joinCodeSegments(['a\n\n']), 'a\n\n');
+  assert.equal(joinCodeSegments(['\n']), '\n');
+  assert.equal(joinCodeSegments(['a\n', 'b\n']), 'a\nb\n');
+});
+
 test('linkDestination decodes entities and backslash escapes once', () => {
   assert.equal(linkDestination('https://example.invalid/?a=1&amp;b=2'), 'https://example.invalid/?a=1&b=2');
+  assert.equal(linkDestination('https://example.invalid/?a=1&copy;=2'), 'https://example.invalid/?a=1©=2');
   assert.equal(linkDestination('https://example.invalid/a\\_b'), 'https://example.invalid/a_b');
   assert.equal(linkDestination('https://example.invalid/?x=&amp;amp;'), 'https://example.invalid/?x=&amp;');
   assert.equal(linkDestination('https://example.invalid/a\\b'), 'https://example.invalid/a\\b');
