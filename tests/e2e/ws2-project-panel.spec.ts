@@ -50,7 +50,7 @@ async function showPanel(page: Page) {
 }
 
 async function addFolder(page: Page, folder: string) {
-  await panel(page).getByTestId('project-add-folder').click();
+  await page.keyboard.press(`${modifier}+Shift+a`);
   await expect(roots(page).and(page.locator(`[data-path=${JSON.stringify(folder)}]`))).toHaveCount(1);
   await expect(entry(page, folder)).toBeVisible();
 }
@@ -93,7 +93,7 @@ test('AC1: add-folder picker adds several roots to the active workspace only', a
   await showPanel(page);
   await expect(roots(page)).toHaveCount(0);
   // The third picker returns both roots in one invocation.
-  await panel(page).getByTestId('project-add-folder').click();
+  await page.keyboard.press(`${modifier}+Shift+a`);
   await expect(roots(page)).toHaveCount(2);
   await expect(entry(page, projects.orchard)).toBeVisible();
   await expect(entry(page, projects.harbor)).toBeVisible();

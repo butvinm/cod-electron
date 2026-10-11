@@ -1,0 +1,11 @@
+# Project panel fixture licenses
+
+The SVG files are unmodified copies from lucide-static 1.55.0, licensed under ISC.
+The complete upstream license text, including its Feather-derived icon notice, is copied byte for byte in LICENSE.
+Source package: https://www.npmjs.com/package/lucide-static/v/1.55.0
+
+The retained default-settings.json is an unmodified Zed v1.23.2 reference from commit c0199504b9cce79bc27524950022ed701bc3ebd5.
+Zed licensing: https://github.com/zed-industries/zed/blob/c0199504b9cce79bc27524950022ed701bc3ebd5/LICENSE-GPL
+
+Zed SVG drawings and unused Rust mapping/resolver copies have been removed.
+Story #37 AC1 retains Zed's file type mapping with Lucide drawings per stakeholder issue #53.

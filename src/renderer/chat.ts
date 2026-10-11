@@ -2,7 +2,8 @@
 // draft and the focus survive the workbench redraws. Each event updates only the part it changes.
 // The Claude process lives in the main process; this file only draws events and sends keys.
 import type { CodApi } from '../shared/ipc.ts';
-import { createChat, reduce, toolTarget, toolInputText, splitBlocks, statusOf, permissionText, queueHint, promptFocusTarget, type ChatItem, type ChatModelEvent, type PermissionRequest } from './chat-model.ts';
+import { createChat, reduce, toolTarget, toolInputText, statusOf, permissionText, queueHint, promptFocusTarget, type ChatItem, type ChatModelEvent, type PermissionRequest } from './chat-model.ts';
+import { renderMarkdown } from './markdown.ts';
 
 type ToolItem = Extract<ChatItem, { kind: 'tool' }>;
 
@@ -74,10 +75,19 @@ export function create({ workspaceId, chatApi }: ChatOptions): ChatView {
   }
 
   function drawText(container: HTMLElement, text: string): void {
-    container.replaceChildren(...splitBlocks(text).map(block => (block.type === 'code'
-      ? node('pre', { class: 'chat-code', text: block.text })
-      : node('p', { class: 'chat-paragraph', text: block.text.replace(/^\n+|\n+$/g, '') }))));
+    container.replaceChildren(...renderMarkdown(text));
   }
+
+  // Links in replies go to the system browser. The window itself never navigates.
+  function openLink(event: Event): void {
+    const anchor = event.target instanceof Element ? event.target.closest('a') : null;
+    if (!anchor || !transcript.contains(anchor)) return;
+    event.preventDefault();
+    const href = anchor.getAttribute('href');
+    if (href && event.type === 'click') chatApi.openLink(href).catch(console.error);
+  }
+  transcript.addEventListener('click', openLink);
+  transcript.addEventListener('auxclick', openLink);
 
   function buildTool(item: ToolItem): HTMLElement {
     const summary = node('button', { class: 'chat-tool-summary', type: 'button', 'aria-expanded': 'false' },

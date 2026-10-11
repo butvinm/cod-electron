@@ -19,6 +19,7 @@ async function expectActive(page: Page, name: string) {
   await expect(area(page)).toHaveAttribute('data-workspace-id', id!);
   await expect(area(page)).toBeVisible();
   await expect(page.getByTestId('workspace-area').and(page.locator(':visible'))).toHaveCount(1);
+  if (!(await area(page).getByTestId('claude-chat').isVisible())) await page.keyboard.press(process.platform === 'darwin' ? 'Meta+n' : 'Control+n');
   await expect(area(page).getByTestId('claude-chat')).toHaveAttribute('data-workspace-id', id!);
 }
 
