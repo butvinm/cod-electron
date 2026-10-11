@@ -60,6 +60,7 @@ export interface InvokeChannels {
   'chat:send': { args: [workspaceId: string, text: string]; result: void };
   'chat:permission': { args: [workspaceId: string, id: string, answer: PermissionAnswer]; result: void };
   'chat:interrupt': { args: [workspaceId: string]; result: void };
+  'chat:open-link': { args: [url: string]; result: void };
   'editor:read': { args: [workspaceId: string, file: string]; result: FileContents };
   'editor:write': { args: [workspaceId: string, file: string, contents: FileContents]; result: void };
 }
@@ -96,6 +97,8 @@ export interface CodApi {
     info(workspaceId: string): Promise<ChatInfo>;
     send(workspaceId: string, text: string): Promise<void>;
     interrupt(workspaceId: string): Promise<void>;
+    // Opens an http, https or mailto link from a reply in the system browser.
+    openLink(url: string): Promise<void>;
     permission(workspaceId: string, id: string, answer: PermissionAnswer): Promise<void>;
     onEvent(callback: (workspaceId: string, event: ChatEvent) => void): void;
   };

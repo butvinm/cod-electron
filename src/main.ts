@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { Folders } from './folders.ts';
 import { readDir } from './project-fs.ts';
 import { FileIndex } from './file-index.ts';
@@ -112,6 +112,28 @@ handle('chat:permission', (workspaceId, id, answer) => {
 });
 handle('chat:interrupt', workspaceId => { chats.interrupt(String(workspaceId)); });
 
+// Links in chat replies. Only http, https and mailto go to the system browser.
+// With COD_TEST_RECORD_EXTERNAL_URLS=1 the URL is recorded instead of opened, for tests.
+const recordedExternalUrls: string[] | null = process.env.COD_TEST_RECORD_EXTERNAL_URLS === '1' ? [] : null;
+if (recordedExternalUrls) (globalThis as typeof globalThis & { __codTestOpenedExternalURLs?: string[] }).__codTestOpenedExternalURLs = recordedExternalUrls;
+
+async function openExternalLink(url: unknown): Promise<void> {
+  if (typeof url !== 'string' || url.length > 8000) throw new Error('Link must be text');
+  let protocol = '';
+  try { protocol = new URL(url).protocol; } catch { throw new Error('Not a link'); }
+  if (!['http:', 'https:', 'mailto:'].includes(protocol)) throw new Error('This kind of link is not opened');
+  if (recordedExternalUrls) recordedExternalUrls.push(url);
+  else await shell.openExternal(url);
+}
+
+// The window never navigates away from the app page and never opens another window.
+function keepWindowOnApp(win: BrowserWindow): void {
+  win.webContents.on('will-navigate', event => event.preventDefault());
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+}
+
+handle('chat:open-link', url => openExternalLink(url));
+
 handle('project:read-dir', dir => {
   if (typeof dir !== 'string' || !folders.contains(dir)) throw new Error('Not inside a workspace folder');
   return readDir(dir);
@@ -141,6 +163,7 @@ function createWindow(): void {
     },
   });
   mainWindow = win;
+  keepWindowOnApp(win);
   win.on('closed', () => { mainWindow = null; });
   // File watching is out of scope: file lists refresh when the window gains focus.
   win.on('focus', () => fileIndex.markAllStale());
