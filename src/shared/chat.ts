@@ -13,7 +13,31 @@ export type ChatEvent =
   | { type: 'error'; kind: ErrorKind; message: string }
   | { type: 'permission-request'; id: string; tool: string; input: unknown }
   | { type: 'permission-clear'; id: string }       // the request went away without an answer
-  | { type: 'interrupted' };
+  | { type: 'interrupted' }
+  | { type: 'mode'; mode: PermissionMode };        // the chat's permission mode changed
+
+// The permission modes of a chat, in the order Shift+Tab cycles them (Claude Code's order).
+export type PermissionMode = 'manual' | 'acceptEdits' | 'plan' | 'auto';
+
+export const PERMISSION_MODES: readonly { mode: PermissionMode; label: string }[] = [
+  { mode: 'manual', label: 'Manual' },
+  { mode: 'acceptEdits', label: 'Accept Edits' },
+  { mode: 'plan', label: 'Plan' },
+  { mode: 'auto', label: 'Auto' },
+];
+
+export function isPermissionMode(value: unknown): value is PermissionMode {
+  return PERMISSION_MODES.some(entry => entry.mode === value);
+}
+
+export function nextPermissionMode(mode: PermissionMode): PermissionMode {
+  const at = PERMISSION_MODES.findIndex(entry => entry.mode === mode);
+  return PERMISSION_MODES[(at + 1) % PERMISSION_MODES.length].mode;
+}
+
+export function permissionModeLabel(mode: PermissionMode): string {
+  return PERMISSION_MODES.find(entry => entry.mode === mode)?.label ?? 'Manual';
+}
 
 export type ErrorKind = 'not-logged-in' | 'failed' | 'missing';
 
@@ -22,10 +46,14 @@ export interface PermissionAnswer {
   allow: boolean;
   message?: string;
   scope?: 'once' | 'session';
+  // For AskUserQuestion: question text -> chosen label, labels joined with ", ", or typed text.
+  answers?: Record<string, string>;
 }
 
 // Where the chat of a workspace runs.
 export interface ChatInfo {
   cwd: string;
   home: boolean;
+  // One line about a problem with the settings, when the default folder could not be used.
+  notice?: string;
 }
