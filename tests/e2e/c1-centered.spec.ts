@@ -34,8 +34,13 @@ async function prepare(page: Page, project: string) {
   await page.keyboard.press(key('Shift+e'));
   const panel = page.getByTestId('project-panel');
   await expect(panel).toBeVisible();
-  await panel.getByTestId('project-add-folder').focus();
-  await page.keyboard.press('Enter');
+  const oldButton = panel.getByTestId('project-add-folder');
+  if (await oldButton.isVisible()) {
+    await oldButton.focus();
+    await page.keyboard.press('Enter');
+  } else {
+    await page.keyboard.press(key('Shift+a'));
+  }
   await expect(panel.getByTestId('project-root')).toHaveCount(1);
   await expect(panel.getByTestId('project-root')).toHaveAttribute('data-path', project);
   // Use the real finder keyboard path to open two files, leaving one active tab.
