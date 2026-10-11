@@ -31,6 +31,17 @@
   white-space: nowrap;
 }
 
+.chat-folder-notice {
+  flex: none;
+  padding: 4px 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: 12px;
+  border-bottom: 1px solid var(--border-variant);
+}
+
 .chat-session { flex: none; white-space: nowrap; }
 .chat-session-id { font-family: ui-monospace, Menlo, Consolas, monospace; }
 
