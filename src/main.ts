@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
-import { Folders } from './folders.ts';
+import { Folders, realOrNull } from './folders.ts';
+import { RecentFolders } from './recent-folders.ts';
 import { readDir } from './project-fs.ts';
 import { FileIndex } from './file-index.ts';
 import { EditorFiles } from './editor-files.ts';
@@ -81,10 +82,31 @@ folders.on('change', payload => {
 
 handle('project:roots', workspaceId => folders.list(String(workspaceId)));
 
-handle('project:add-folders', async workspaceId => {
-  const picked = await pickFolders();
-  return folders.add(String(workspaceId), picked);
+// Recent folders live in the user data directory. A folder counts as opened when the person picks it.
+const recent = new RecentFolders(path.join(app.getPath('userData'), 'recent-folders.json'));
+
+recent.on('change', () => sendToPage('recent:changed', undefined));
+
+async function pickAndRemember(): Promise<string[]> {
+  // Paths keep the form the dialog gave, as the project panel shows them.
+  const picked = (await pickFolders()).filter(folder => realOrNull(folder) !== null);
+  if (picked.length > 0) recent.add(picked);
+  return picked;
+}
+
+handle('project:pick-folders', () => pickAndRemember());
+
+handle('project:add-folders', async workspaceId => folders.add(String(workspaceId), await pickAndRemember()));
+
+// Only folders from the recent list can be added this way, so the page cannot add arbitrary paths.
+handle('project:add-paths', (workspaceId, paths) => {
+  if (!Array.isArray(paths)) throw new Error('Paths must be a list');
+  const known = paths.filter((folder): folder is string => typeof folder === 'string' && recent.has(folder) && realOrNull(folder) !== null);
+  recent.add(known);
+  return folders.add(String(workspaceId), known);
 });
+
+handle('recent:list', () => recent.get());
 
 handle('project:forget', workspaceId => {
   chats.forget(String(workspaceId));
