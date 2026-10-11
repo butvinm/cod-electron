@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import { historyKeyApplies } from './shared/history-scope.ts';
 import type { Action, CodApi, EventChannels, InvokeArgs, InvokeChannel, InvokeResult, SendChannels } from './shared/ipc.ts';
 
 // Typed ends of the IPC contract in src/shared/ipc.ts.
@@ -72,6 +73,8 @@ window.addEventListener('keydown', event => {
     if (entry && event.shiftKey === entry.shift && event.altKey === entry.alt) action = entry.action;
   }
   if (!action) return;
+  // Not ours when focus is elsewhere: the key goes on to whatever it means there.
+  if (action === 'session-history' && !historyKeyApplies(document.activeElement)) return;
   event.preventDefault();
   dispatch(action);
 }, true);
