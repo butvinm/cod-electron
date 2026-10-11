@@ -451,6 +451,8 @@ window.addEventListener('keydown', event => {
   if (event.target instanceof Element && event.target.closest('.chat-mode-menu')) return;
   const chat = chats[state.activeId];
   if (chat?.hasPermission()) {
+    // Esc on the mode selector must not deny a prompt or decline a question by accident.
+    if (event.target instanceof Element && event.target.closest('.chat-mode')) return;
     event.preventDefault();
     event.stopPropagation();
     chat.interrupt();

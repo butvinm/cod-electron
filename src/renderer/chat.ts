@@ -334,7 +334,9 @@ export function create({ workspaceId, chatApi, openHistory = () => {} }: ChatOpt
     }
     // A prompt takes the focus unless the person is working somewhere else.
     const active = document.activeElement;
-    if (!active || active === document.body || element.contains(active)) {
+    // The mode selector and its menu keep the focus, so a key meant for them never answers the request.
+    const inModeSelector = active !== null && modeSelector.element.contains(active);
+    if (!inModeSelector && (!active || active === document.body || element.contains(active))) {
       if (opened) opened.focusFirst(); else choices[0].focus();
     }
   }
