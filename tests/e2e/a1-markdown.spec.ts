@@ -13,6 +13,13 @@ declare global {
 
 const chat = (page: Page) => page.getByTestId('workspace-area').getByTestId('claude-chat');
 const replies = (page: Page) => chat(page).getByTestId('chat-assistant-message');
+test.beforeEach(async ({ cod: { page } }) => {
+  if (await page.getByTestId('start-screen').isVisible()) {
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+n' : 'Control+n');
+  }
+  await chat(page).waitFor({ state: 'visible' });
+});
+
 async function send(page: Page, prompt = 'Show the invented markdown fixture') {
   const composer = chat(page).getByRole('textbox', { name: 'Message Claude' });
   await composer.focus();
