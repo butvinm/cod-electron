@@ -8,6 +8,7 @@ import { FileIndex } from './file-index.ts';
 import { EditorFiles } from './editor-files.ts';
 import { createClaudeProvider } from './agents/claude.ts';
 import { Chats } from './agents/chats.ts';
+import { listSessions, openSession } from './agents/claude-sessions.ts';
 import { readDefaultMode } from './agents/claude-settings.ts';
 import { isPermissionMode } from './shared/chat.ts';
 import { readDefaultChatFolder } from './settings.ts';
@@ -170,6 +171,15 @@ function keepWindowOnApp(win: BrowserWindow): void {
 }
 
 handle('chat:open-link', url => openExternalLink(url));
+
+// Sessions of the Claude CLI store. Read only; the page can only open one that is listed for the workspace's folders.
+handle('chat:sessions', workspaceId => listSessions(chats.sessionFolders(String(workspaceId))));
+handle('chat:open-session', async (workspaceId, sessionId) => {
+  if (typeof sessionId !== 'string') throw new Error('Session id must be text');
+  const opened = openSession(chats.sessionFolders(String(workspaceId)), sessionId);
+  if (opened) await chats.open(String(workspaceId), opened.id, opened.folder);
+  return opened;
+});
 
 handle('project:read-dir', dir => {
   if (typeof dir !== 'string' || !folders.contains(dir)) throw new Error('Not inside a workspace folder');

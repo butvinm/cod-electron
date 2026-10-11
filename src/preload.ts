@@ -40,7 +40,8 @@ const keys: Partial<Record<string, { shift: boolean; alt: boolean; action: Actio
 };
 // Keys that differ by the alt modifier, so they need their own table.
 const altKeys: Partial<Record<string, Action>> = { KeyO: 'open-recent' };
-const plainKeys: Partial<Record<string, Action>> = mac ? { KeyO: 'open-folder', KeyN: 'new-chat' } : { KeyN: 'new-chat' };
+// Cmd-G / Ctrl-G is Zed's agents_sidebar::ToggleThreadHistory.
+const plainKeys: Partial<Record<string, Action>> = mac ? { KeyO: 'open-folder', KeyN: 'new-chat', KeyG: 'session-history' } : { KeyN: 'new-chat', KeyG: 'session-history' };
 let chord = false; // Linux: ctrl-k was pressed, ctrl-o comes next
 const queue: Action[] = [];
 let listener: ((action: Action) => void) | null = null;
@@ -101,6 +102,8 @@ const cod: CodApi = {
     mode: workspaceId => invoke('chat:mode', workspaceId),
     setMode: (workspaceId, mode) => invoke('chat:set-mode', workspaceId, mode),
     openLink: url => invoke('chat:open-link', url),
+    sessions: workspaceId => invoke('chat:sessions', workspaceId),
+    openSession: (workspaceId, sessionId) => invoke('chat:open-session', workspaceId, sessionId),
     permission: (workspaceId, id, answer) => invoke('chat:permission', workspaceId, id, answer),
     onEvent(callback) {
       on('chat:event', payload => callback(payload.workspaceId, payload.event));
