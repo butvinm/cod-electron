@@ -8,6 +8,7 @@ import { FileIndex } from './file-index.ts';
 import { EditorFiles } from './editor-files.ts';
 import { createClaudeProvider } from './agents/claude.ts';
 import { Chats } from './agents/chats.ts';
+import { readDefaultChatFolder } from './settings.ts';
 import { createQuitGuard } from './agents/quit-guard.ts';
 import { createQuitFlow } from './quit-flow.ts';
 import type { EventChannels, InvokeArgs, InvokeChannel, InvokeResult, SendChannels } from './shared/ipc.ts';
@@ -71,6 +72,7 @@ const claude = createClaudeProvider();
 const chats = new Chats({
   provider: claude,
   folders: { list: id => folders.list(id) },
+  defaultFolder: () => readDefaultChatFolder(),
   emit: (workspaceId, event) => sendToPage('chat:event', { workspaceId, event }),
 });
 
@@ -122,6 +124,7 @@ handle('finder:query', (workspaceId, text) => {
 });
 
 handle('chat:info', workspaceId => chats.info(String(workspaceId)));
+handle('chat:new', workspaceId => chats.reset(String(workspaceId)));
 handle('chat:send', async (workspaceId, text) => {
   if (typeof text !== 'string' || !text.trim() || text.length > 200000) throw new Error('Message must be non-empty text');
   await claude.ready; // the permission server must be listening before Claude starts

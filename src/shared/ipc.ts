@@ -69,6 +69,7 @@ export interface InvokeChannels {
   'finder:prepare': { args: [workspaceId: string]; result: void };
   'finder:query': { args: [workspaceId: string, text: string]; result: FinderResult[] };
   'chat:info': { args: [workspaceId: string]; result: ChatInfo };
+  'chat:new': { args: [workspaceId: string]; result: void };
   'chat:send': { args: [workspaceId: string, text: string]; result: void };
   'chat:permission': { args: [workspaceId: string, id: string, answer: PermissionAnswer]; result: void };
   'chat:interrupt': { args: [workspaceId: string]; result: void };
@@ -108,6 +109,7 @@ export interface CodApi {
   };
   chat: {
     info(workspaceId: string): Promise<ChatInfo>;
+    reset(workspaceId: string): Promise<void>;
     send(workspaceId: string, text: string): Promise<void>;
     interrupt(workspaceId: string): Promise<void>;
     // Opens an http, https or mailto link from a reply in the system browser.

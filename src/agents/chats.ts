@@ -22,6 +22,8 @@ export interface ChatsOptions {
   folders: { list: (workspaceId: string) => string[] };
   emit: (workspaceId: string, event: ChatEvent) => void;
   home?: string;
+  // The settings' default folder for a workspace without folders.
+  defaultFolder?: () => { folder: string | null; notice: string | null };
 }
 
 // One chat per workspace. Owns the agent session of each workspace and the choice of
@@ -41,27 +43,38 @@ export class Chats {
   folders: ChatsOptions['folders'];
   emit: ChatsOptions['emit'];
   home: string;
+  defaultFolder: NonNullable<ChatsOptions['defaultFolder']>;
   chats = new Map<string, Chat>();
   // Every session not yet gone, including interrupted ones.
   live = new Set<AgentSession>();
 
-  constructor({ provider, folders, emit, home = os.homedir() }: ChatsOptions) {
+  constructor({ provider, folders, emit, home = os.homedir(), defaultFolder = () => ({ folder: null, notice: null }) }: ChatsOptions) {
+    this.defaultFolder = defaultFolder;
     this.provider = provider;
     this.folders = folders;
     this.emit = emit;
     this.home = home;
   }
 
+  // First folder of the workspace, else the settings' default folder, else home.
+  _choice(workspaceId: string): { cwd: string; notice: string | null } {
+    const first = this.folders.list(workspaceId)[0];
+    if (first) return { cwd: first, notice: null };
+    const { folder, notice } = this.defaultFolder();
+    return { cwd: folder || this.home, notice };
+  }
+
   _wanted(workspaceId: string): string {
-    return this.folders.list(workspaceId)[0] || this.home;
+    return this._choice(workspaceId).cwd;
   }
 
   // The directory Claude really runs in: the running process's, else the one the next message will use.
   info(workspaceId: string): ChatInfo {
     const chat = this.chats.get(workspaceId);
     const running = chat && chat.session && chat.session.alive && !chat.session.interrupting;
-    const cwd = running && chat.cwd !== null ? chat.cwd : this._wanted(workspaceId);
-    return { cwd, home: cwd === this.home };
+    const { cwd: wanted, notice } = this._choice(workspaceId);
+    const cwd = running && chat.cwd !== null ? chat.cwd : wanted;
+    return notice ? { cwd, home: cwd === this.home, notice } : { cwd, home: cwd === this.home };
   }
 
   _chat(workspaceId: string): Chat {
@@ -141,6 +154,20 @@ export class Chats {
 
   interrupt(workspaceId: string): void {
     this.chats.get(workspaceId)?.session?.interrupt();
+  }
+
+  // New Claude Chat: the old process ends and the next message starts a new session (no resume).
+  // The old session stays on disk for the CLI.
+  reset(workspaceId: string): Promise<void> {
+    const chat = this.chats.get(workspaceId);
+    this.chats.delete(workspaceId);
+    if (!chat || !chat.session) return Promise.resolve();
+    // Detach first, so late events of the old process never reach the new chat.
+    const session = chat.session;
+    chat.session = null;
+    chat.busy = false;
+    chat.asked.clear();
+    return Promise.resolve(session.close());
   }
 
   forget(workspaceId: string): Promise<void> {

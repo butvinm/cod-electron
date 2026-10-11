@@ -47,6 +47,8 @@ export function create({ workspaceId, chatApi }: ChatOptions): ChatView {
   session.hidden = true;
   const status = node('span', { class: 'chat-status', testid: 'chat-session-status', 'aria-live': 'polite', text: 'Ready' });
   const header = node('div', { class: 'chat-header' }, directory, session, status);
+  const folderNotice = node('div', { class: 'chat-folder-notice', testid: 'chat-folder-notice', role: 'status' });
+  folderNotice.hidden = true;
   const promptBox = node('div', { class: 'chat-permission', testid: 'chat-permission-prompt', role: 'group', 'aria-label': 'Permission request' });
   promptBox.hidden = true;
   const transcript = node('div', { class: 'chat-transcript', role: 'log', 'aria-label': 'Conversation' });
@@ -58,7 +60,7 @@ export function create({ workspaceId, chatApi }: ChatOptions): ChatView {
     spellcheck: 'false',
   });
   const element = node('div', { class: 'claude-chat', testid: 'claude-chat', 'data-workspace-id': workspaceId },
-    header, transcript, promptBox, node('div', { class: 'chat-input' }, composer));
+    header, folderNotice, transcript, promptBox, node('div', { class: 'chat-input' }, composer));
 
   function growComposer(): void {
     // Set through the CSSOM, because the CSP blocks inline style attributes.
@@ -71,6 +73,8 @@ export function create({ workspaceId, chatApi }: ChatOptions): ChatView {
       directory.textContent = info.home
         ? `Working in your home folder: ${info.cwd}`
         : `Working in ${info.cwd}`;
+      folderNotice.textContent = info.notice ?? '';
+      folderNotice.hidden = !info.notice;
     }).catch(console.error);
   }
 
