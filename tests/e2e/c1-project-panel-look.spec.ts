@@ -40,8 +40,13 @@ const test = base.extend<{ project: string }>({
 async function setup(page: Page, project: string) {
   await page.keyboard.press(`${modifier}+Shift+e`);
   await expect(panel(page)).toBeVisible();
-  await panel(page).getByTestId('project-add-folder').focus();
-  await page.keyboard.press('Enter');
+  const oldButton = panel(page).getByTestId('project-add-folder');
+  if (await oldButton.isVisible()) {
+    await oldButton.focus();
+    await page.keyboard.press('Enter');
+  } else {
+    await page.keyboard.press(`${modifier}+Shift+a`);
+  }
   await expect(entry(page, project)).toBeVisible();
   await panel(page).focus();
   await page.keyboard.press('ArrowDown');
