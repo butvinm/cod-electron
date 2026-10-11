@@ -4,13 +4,13 @@
   "private": true,
   "main": "dist/main.js",
   "scripts": {
-    "build": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/build.ts",
+    "build": "node --experimental-strip-types --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/build.ts",
     "postinstall": "npm run build",
     "prestart": "npm run build",
     "start": "electron .",
     "pretest:e2e": "npm run build",
     "test:e2e": "playwright test",
-    "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --test tests/unit/*.test.ts",
+    "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/unit/*.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.main.json && tsc --noEmit -p tsconfig.renderer.json"
   },
   "devDependencies": {

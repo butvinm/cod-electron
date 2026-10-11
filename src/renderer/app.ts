@@ -1,28 +1,34 @@
-const { createState, freeze, add, activate, step, close } = Workspaces;
-const { visibleRows, navigate, createPanelState } = ProjectTree;
+import type { Action, DirEntry } from '../shared/ipc.ts';
+import { createState, freeze, add, activate, step, close, type WorkspacesState } from './workspaces.ts';
+import { visibleRows, navigate, createPanelState, type PanelState } from './project-tree.ts';
+import { confirmOrKeep } from './editor-tabs.ts';
+import * as Editor from './editor.ts';
+import * as Chat from './chat.ts';
+import * as FileFinder from './file-finder.ts';
 
-const root = document.getElementById('cod-window');
-let state = createState();
+const root = document.getElementById('cod-window') as HTMLElement;
+const finderRoot = document.getElementById('finder-root') as HTMLElement;
+let state: WorkspacesState = createState();
 
 // Project panel state lives per workspace. The folders themselves live in the main process.
-const panels = {};     // workspace id -> { open, expanded, selected }
-const rootsOf = {};    // workspace id -> absolute root paths, mirrored from the main process
-const listings = {};   // directory path -> [{ name, path, isDirectory }]
+const panels: Record<string, PanelState | undefined> = {};
+const rootsOf: Record<string, string[] | undefined> = {};   // workspace id -> absolute root paths, mirrored from the main process
+const listings: Record<string, DirEntry[] | undefined> = {}; // directory path -> entries
 let focusPanelNext = false;
 
 // Editor tabs. When the last tab closes, focus goes back to the active workspace tab.
 const editor = Editor.create({
   roots: id => rootsOf[id] || [],
-  focusFallback: () => root.querySelector('[data-testid="workspace-tab"][aria-selected="true"]')?.focus({ preventScroll: true }),
+  focusFallback: () => root.querySelector<HTMLElement>('[data-testid="workspace-tab"][aria-selected="true"]')?.focus({ preventScroll: true }),
 });
 
 // Each workspace has one chat. Its DOM is kept, so render() only moves it into the new area.
-const chats = {};      // workspace id -> chat view from chat.js
-const chatOf = id => (chats[id] = chats[id] || Chat.create({ workspaceId: id, chatApi: window.cod.chat }));
+const chats: Record<string, Chat.ChatView | undefined> = {};
+const chatOf = (id: string): Chat.ChatView => (chats[id] = chats[id] || Chat.create({ workspaceId: id, chatApi: window.cod.chat }));
 
-const panelOf = id => (panels[id] = panels[id] || createPanelState());
+const panelOf = (id: string): PanelState => (panels[id] = panels[id] || createPanelState());
 
-function el(tag, props = {}, ...kids) {
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<string, string> = {}, ...kids: (Node | string)[]): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
   for (const [key, value] of Object.entries(props)) {
     if (key === 'testid') node.dataset.testid = value;
@@ -33,11 +39,13 @@ function el(tag, props = {}, ...kids) {
   return node;
 }
 
-function rowsOf(id) {
+const testidOf = (element: Element | null): string | undefined => (element instanceof HTMLElement ? element.dataset.testid : undefined);
+
+function rowsOf(id: string) {
   return visibleRows(rootsOf[id] || [], panelOf(id).expanded, listings);
 }
 
-async function loadDir(dir) {
+async function loadDir(dir: string): Promise<void> {
   try {
     listings[dir] = await window.cod.project.readDir(dir);
   } catch (error) {
@@ -46,7 +54,7 @@ async function loadDir(dir) {
   }
 }
 
-async function toggleDir(id, dir) {
+async function toggleDir(id: string, dir: string): Promise<void> {
   const ps = panelOf(id);
   if (ps.expanded.has(dir)) ps.expanded.delete(dir);
   else {
@@ -56,20 +64,21 @@ async function toggleDir(id, dir) {
   render();
 }
 
-function openFile(id, file) {
+function openFile(id: string, file: string): void {
   window.cod.project.openFile(id, file).then(() => editor.open(id, file)).catch(console.error);
 }
 
 // A click selects the row, then toggles a folder or opens a file, as in Zed.
-function clickRow(id, row) {
+function clickRow(id: string, row: ReturnType<typeof rowsOf>[number]): Promise<void> | undefined {
   panelOf(id).selected = row.path;
   focusPanelNext = true;
   if (row.isDirectory) return toggleDir(id, row.path);
   openFile(id, row.path);
   render();
+  return undefined;
 }
 
-function onPanelKey(event) {
+function onPanelKey(event: KeyboardEvent): void {
   if (event.target !== event.currentTarget || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
   const id = state.activeId;
   const ps = panelOf(id);
@@ -79,12 +88,12 @@ function onPanelKey(event) {
   if (result.select) {
     ps.selected = result.select;
     render();
-  } else if (result.expand || result.collapse) toggleDir(id, result.expand || result.collapse);
+  } else if (result.expand || result.collapse) void toggleDir(id, (result.expand || result.collapse) as string);
   else if (result.open) openFile(id, result.open);
 }
 
-function projectRow(id, row, selected) {
-  const props = {
+function projectRow(id: string, row: ReturnType<typeof rowsOf>[number], selected: string | null): HTMLElement {
+  const props: Record<string, string> = {
     class: 'project-entry',
     role: 'treeitem',
     testid: 'project-entry',
@@ -103,18 +112,18 @@ function projectRow(id, row, selected) {
   const node = el('div', props, lead, el('span', { class: 'project-entry-label', testid: 'project-entry-label', text: row.name }));
   // Set through the CSSOM, because the CSP blocks inline style attributes.
   node.style.paddingLeft = `${8 + row.depth * 16}px`;
-  node.addEventListener('click', () => clickRow(id, row));
+  node.addEventListener('click', () => { void clickRow(id, row); });
   return node;
 }
 
-function projectPanel(id) {
+function projectPanel(id: string): HTMLElement {
   const ps = panelOf(id);
   const addButton = el('button', { class: 'project-add', testid: 'project-add-folder', 'aria-label': 'Add folder to workspace', title: 'Add folder', text: 'Add Folder' });
-  addButton.addEventListener('click', () => window.cod.project.addFolders(id).catch(console.error));
+  addButton.addEventListener('click', () => { window.cod.project.addFolders(id).catch(console.error); });
   const tree = el('div', { class: 'project-tree', role: 'tree', 'aria-label': 'Project' });
-  let wrapper = null;
+  let wrapper: HTMLElement | null = null;
   for (const row of rowsOf(id)) {
-    if (row.depth === 0) {
+    if (row.depth === 0 || !wrapper) {
       wrapper = el('div', { class: 'project-root', role: 'group', testid: 'project-root', 'data-path': row.path });
       tree.append(wrapper);
     }
@@ -125,14 +134,14 @@ function projectPanel(id) {
   return panel;
 }
 
-function render() {
+function render(): void {
   // Rebuilding the DOM drops focus and scroll, so remember them first.
   const focused = document.activeElement;
-  const plusHadFocus = focused?.dataset?.testid === 'workspace-add';
-  const addHadFocus = focused?.dataset?.testid === 'project-add-folder';
-  const panelHadFocus = focused?.dataset?.testid === 'project-panel';
+  const plusHadFocus = testidOf(focused) === 'workspace-add';
+  const addHadFocus = testidOf(focused) === 'project-add-folder';
+  const panelHadFocus = testidOf(focused) === 'project-panel';
   const restoreEditor = editor.detach();
-  const chatFocus = focused && chats[state.activeId]?.element.contains(focused) ? focused : null;
+  const chatFocus = focused instanceof HTMLElement && chats[state.activeId]?.element.contains(focused) ? focused : null;
   const oldScroller = root.querySelector('.tabs');
   const scrollLeft = oldScroller ? oldScroller.scrollLeft : 0;
   const oldTree = root.querySelector('.project-tree');
@@ -142,6 +151,7 @@ function render() {
   bar.append(tabs);
   for (const ws of state.workspaces) {
     const selected = ws.id === state.activeId;
+    const closeButton = el('button', { class: 'tab-close', testid: 'workspace-close', 'aria-label': `Close ${ws.name}`, tabindex: '-1', text: String.fromCharCode(0xd7) });
     const tab = el('div', {
       class: 'tab',
       role: 'tab',
@@ -151,11 +161,11 @@ function render() {
       tabindex: selected ? '0' : '-1',
     },
     el('span', { class: 'tab-label', testid: 'workspace-tab-label', text: ws.name }),
-    el('button', { class: 'tab-close', testid: 'workspace-close', 'aria-label': `Close ${ws.name}`, tabindex: '-1', text: String.fromCharCode(0xd7) }));
+    closeButton);
     tab.addEventListener('click', () => update(activate(state, ws.id)));
-    tab.querySelector('button').addEventListener('click', event => {
+    closeButton.addEventListener('click', event => {
       event.stopPropagation();
-      closeWorkspace(ws.id);
+      void closeWorkspace(ws.id);
     });
     tabs.append(tab);
   }
@@ -175,10 +185,11 @@ function render() {
 
   const editorHadFocus = restoreEditor();
   tabs.scrollLeft = scrollLeft;
-  const active = tabs.querySelector('[aria-selected="true"]');
-  active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  const active = tabs.querySelector<HTMLElement>('[aria-selected="true"]');
+  active?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   if (panel) {
-    panel.querySelector('.project-tree').scrollTop = treeScroll;
+    const tree = panel.querySelector('.project-tree');
+    if (tree) tree.scrollTop = treeScroll;
     panel.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
   }
   // Focus goes where it was, or to the panel when asked, otherwise to the active tab.
@@ -187,13 +198,13 @@ function render() {
   else if (panel && focusPanelNext) panel.focus({ preventScroll: true });
   else if (editorHadFocus) editor.focus();
   else if (chatFocus) chatFocus.focus({ preventScroll: true });
-  else if (panel && addHadFocus) panel.querySelector('.project-add').focus({ preventScroll: true });
+  else if (panel && addHadFocus) panel.querySelector<HTMLElement>('.project-add')?.focus({ preventScroll: true });
   else if (panel && panelHadFocus) panel.focus({ preventScroll: true });
-  else (plusHadFocus ? plus : active).focus({ preventScroll: true });
+  else (plusHadFocus ? plus : active)?.focus({ preventScroll: true });
   focusPanelNext = false;
 }
 
-function update(next) {
+function update(next: WorkspacesState): void {
   const gone = state.workspaces.filter(w => !next.workspaces.some(n => n.id === w.id));
   // The finder searches one workspace, so switching or closing one closes it.
   const switched = next.activeId !== state.activeId;
@@ -211,14 +222,14 @@ function update(next) {
   if (switched) chats[state.activeId]?.focusPrompt();
 }
 
-const showWorkspace = id => update(activate(state, id));
+const showWorkspace = (id: string): void => update(activate(state, id));
+
+const guarded = (confirm: () => Promise<boolean> | boolean): Promise<boolean> => confirmOrKeep(confirm, message => editor.notify(message));
 
 // Modified files are asked about first. Cancel or a failed save keeps the workspace.
-async function closeWorkspace(id) {
+async function closeWorkspace(id: string): Promise<void> {
   if (await guarded(() => editor.confirmClose([id], showWorkspace))) update(close(state, id));
 }
-
-const guarded = confirm => EditorTabs.confirmOrKeep(confirm, message => editor.notify(message));
 
 // Quitting asks about the modified files of every workspace before the main process cleans up the chats.
 // After a yes the editors stay read-only and no workspace can be added until the app exits.
@@ -231,14 +242,14 @@ window.cod.onQuitRequest(async () => {
   return ok;
 });
 
-function togglePanel() {
+function togglePanel(): void {
   const ps = panelOf(state.activeId);
   ps.open = !ps.open;
   focusPanelNext = ps.open;
   render();
 }
 
-function focusPanel() {
+function focusPanel(): void {
   panelOf(state.activeId).open = true;
   focusPanelNext = true;
   render();
@@ -247,7 +258,7 @@ function focusPanel() {
 // The finder sits outside the DOM that render() rebuilds.
 // If the control that had focus was replaced meanwhile, find its successor by test id, else fall back to the active tab.
 const finder = FileFinder.create({
-  container: document.getElementById('finder-root'),
+  container: finderRoot,
   workspaceId: () => state.activeId,
   openFile,
   restoreFocus(previous) {
@@ -256,14 +267,14 @@ const finder = FileFinder.create({
       const selector = FileFinder.focusSelector(previous);
       target = (selector && root.querySelector(selector)) || root.querySelector('[role="tab"][aria-selected="true"]');
     }
-    target?.focus({ preventScroll: true });
+    if (target instanceof HTMLElement) target.focus({ preventScroll: true });
   },
 });
 
 // The index finished a rebuild: re-run the current query so results are never stale.
 window.cod.project.onFinderRebuilt(workspaceId => finder.refresh(workspaceId));
 
-const actions = {
+const actions: Record<Action, () => unknown> = {
   save: () => editor.save(),
   'close-tab': () => editor.closeActive(),
   'file-finder': () => finder.toggle(),
@@ -316,4 +327,4 @@ window.addEventListener('focus', async () => {
 });
 
 render();
-window.cod.onAction(action => actions[action]());
+window.cod.onAction(action => { void actions[action](); });

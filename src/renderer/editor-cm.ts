@@ -1,8 +1,7 @@
-// The only module that touches CodeMirror. esbuild bundles it to dist/editor-cm.js (see scripts/build-editor.mjs).
-// It exposes one global, CodEditor, so the rest of the renderer stays plain JS.
-import { EditorState, RangeSetBuilder } from '@codemirror/state';
-import { lockExtension, lockEffect, withLocked } from './editor-lock.mjs';
-import { EditorView, Decoration, ViewPlugin, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection } from '@codemirror/view';
+// The only module that touches CodeMirror (besides editor-lock.ts), so the rest of the renderer stays plain TypeScript.
+import { EditorState, RangeSetBuilder, type Extension, type Transaction } from '@codemirror/state';
+import { lockExtension, lockEffect, withLocked } from './editor-lock.ts';
+import { EditorView, Decoration, ViewPlugin, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, type DecorationSet, type ViewUpdate } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { syntaxTree, ensureSyntaxTree, indentUnit, bracketMatching } from '@codemirror/language';
 import { highlightTree, tagHighlighter, tags as t } from '@lezer/highlight';
@@ -24,7 +23,7 @@ const colors = {
   selection: '#74ade83d',
 };
 
-const languages = {
+const languages: Record<string, () => Extension> = {
   ts: () => javascript({ typescript: true }),
   mts: () => javascript({ typescript: true }),
   cts: () => javascript({ typescript: true }),
@@ -41,10 +40,11 @@ const languages = {
   json: () => json(),
 };
 
-function languageFor(file) {
+function languageFor(file: string): Extension {
   const dot = file.lastIndexOf('.');
-  const make = dot < 0 ? null : languages[file.slice(dot + 1).toLowerCase()];
-  return make ? [make()] : [];
+  const extension = dot < 0 ? '' : file.slice(dot + 1).toLowerCase();
+  // Own keys only: a file named "x.constructor" must not find Object's methods.
+  return Object.hasOwn(languages, extension) ? [languages[extension]()] : [];
 }
 
 // Lezer tags to the syntax categories of Zed's One Dark theme.
@@ -93,8 +93,8 @@ const highlighter = tagHighlighter([
 ]);
 
 // Marks every highlighted run with its One Dark category. The colors live in editor.css.
-function tokenDecorations(view) {
-  const builder = new RangeSetBuilder();
+function tokenDecorations(view: EditorView): DecorationSet {
+  const builder = new RangeSetBuilder<Decoration>();
   const tree = syntaxTree(view.state);
   for (const { from, to } of view.visibleRanges) {
     highlightTree(tree, highlighter, (start, end, cls) => {
@@ -107,8 +107,9 @@ function tokenDecorations(view) {
 }
 
 const highlighting = ViewPlugin.fromClass(class {
-  constructor(view) { this.decorations = tokenDecorations(view); }
-  update(update) {
+  decorations: DecorationSet;
+  constructor(view: EditorView) { this.decorations = tokenDecorations(view); }
+  update(update: ViewUpdate): void {
     if (update.docChanged || update.viewportChanged || syntaxTree(update.startState) !== syntaxTree(update.state)) {
       this.decorations = tokenDecorations(update.view);
     }
@@ -133,12 +134,30 @@ const theme = EditorView.theme({
 // The page's CSP allows <style> elements with this nonce, which is how CodeMirror injects its own styles.
 const nonce = EditorView.cspNonce.of('cod-editor');
 
-// editFilter is a transaction filter that drops edits while a close or quit is under way.
-function create({ parent, onChange, editFilter }) {
+export interface EditorOptions {
+  parent: HTMLElement;
+  onChange: (state: EditorState) => void;
+  // A transaction filter that drops edits while a close or quit is under way.
+  editFilter: (transaction: Transaction) => Transaction | readonly [];
+}
+
+export interface CodEditor {
+  // A fresh buffer for one file. Each tab keeps its own state, so undo history survives tab switches.
   // locked: build the state already read-only, for buffers opened while a close or quit is under way.
+  stateFor(file: string, text: string, locked?: boolean): EditorState;
+  setState(state: EditorState): void;
+  // Switches the shown buffer between editable and read-only, and returns its new state.
+  lockView(locked: boolean): EditorState;
+  // The same for a buffer that is not shown.
+  lockState(state: EditorState, locked: boolean): EditorState;
+  getState(): EditorState;
+  focus(): void;
+  hasFocus(): boolean;
+}
+
+export function create({ parent, onChange, editFilter }: EditorOptions): CodEditor {
   const view = new EditorView({ parent, state: EditorState.create({ doc: '', extensions: [nonce] }) });
   return {
-    // A fresh buffer for one file. Each tab keeps its own state, so undo history survives tab switches.
     stateFor(file, text, locked = false) {
       // The main process hands over text with "\n" line breaks and restores the file's own on save.
       const state = EditorState.create({
@@ -168,9 +187,7 @@ function create({ parent, onChange, editFilter }) {
       return state;
     },
     setState(state) { view.setState(state); },
-    // Switches the shown buffer between editable and read-only, and returns its new state.
     lockView(locked) { view.dispatch({ effects: lockEffect(locked) }); return view.state; },
-    // The same for a buffer that is not shown.
     lockState(state, locked) { return withLocked(state, locked); },
     getState() { return view.state; },
     focus() { view.focus(); },
@@ -179,8 +196,6 @@ function create({ parent, onChange, editFilter }) {
 }
 
 // The document text, with "\n" line breaks.
-function textOf(state) {
+export function textOf(state: EditorState): string {
   return state.sliceDoc(0, state.doc.length);
 }
-
-globalThis.CodEditor = { create, textOf };
