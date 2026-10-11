@@ -30,8 +30,16 @@ function handle<K extends InvokeChannel>(channel: K, handler: (...args: InvokeAr
   ipcMain.handle(channel, (_event, ...args) => handler(...(args as InvokeArgs<K>)));
 }
 
-function sendToPage<K extends keyof EventChannels>(channel: K, payload: EventChannels[K]): void {
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload);
+function sendToPage<K extends keyof EventChannels>(channel: K, payload: EventChannels[K], win: BrowserWindow | null = mainWindow): void {
+  if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
+}
+
+// Listens for a message from the page. Returns the function that stops listening.
+function listenToPage<K extends keyof SendChannels>(channel: K, listener: (...args: SendChannels[K]) => void): () => void {
+  // The cast gives the untyped IPC arguments their declared types.
+  const wrapped = (_event: Electron.IpcMainEvent, ...args: unknown[]): void => listener(...(args as SendChannels[K]));
+  ipcMain.on(channel, wrapped);
+  return () => { ipcMain.removeListener(channel, wrapped); };
 }
 
 // Test hook: COD_TEST_PICK_FOLDERS is a JSON array of arrays of paths.
@@ -154,15 +162,14 @@ function askPageToQuit(): Promise<boolean> {
   const id = ++askCounter;
   return new Promise(resolve => {
     const finish = (answer: boolean): void => {
-      ipcMain.removeListener('quit:answer', onAnswer);
+      stopListening();
       win.removeListener('closed', onClosed);
       resolve(answer);
     };
-    const onAnswer = (_event: Electron.IpcMainEvent, ...[answerId, answer]: SendChannels['quit:answer']): void => { if (answerId === id) finish(answer === true); };
+    const stopListening = listenToPage('quit:answer', (answerId, answer) => { if (answerId === id) finish(answer === true); });
     const onClosed = (): void => finish(true);
-    ipcMain.on('quit:answer', onAnswer);
     win.once('closed', onClosed);
-    win.webContents.send('quit:ask', id);
+    sendToPage('quit:ask', id, win);
   });
 }
 
