@@ -1,9 +1,11 @@
-Lucide License
+# Project panel fixture licenses
 
-ISC License
+The SVG files are unmodified copies from lucide-static 1.55.0, licensed under ISC.
+The complete upstream license text, including its Feather-derived icon notice, is copied byte for byte in LICENSE.
+Source package: https://www.npmjs.com/package/lucide-static/v/1.55.0
 
-Copyright (c) for portions of Lucide are held by Cole Bemis 2013-2022 as part of Feather (MIT). All other copyright (c) for Lucide are held by Lucide Contributors 2022.
+The retained default-settings.json is an unmodified Zed v1.23.2 reference from commit c0199504b9cce79bc27524950022ed701bc3ebd5.
+Zed licensing: https://github.com/zed-industries/zed/blob/c0199504b9cce79bc27524950022ed701bc3ebd5/LICENSE-GPL
 
-Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted, provided that the above copyright notice and this permission notice appear in all copies.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+Zed SVG drawings and unused Rust mapping/resolver copies have been removed.
+Story #37 AC1 retains Zed's file type mapping with Lucide drawings per stakeholder issue #53.

@@ -4,7 +4,8 @@ Branch: tests/37-project-panel-look.
 Requirements: C1, sprint 2 obligation O2.1, stakeholder feedback 2026-10-11.
 QA owns tests/e2e/c1-project-panel-look.spec.ts, this contract and tests/fixtures/zed-project-panel/.
 Developer owns app code, app icon assets and their license notices.
-Do not weaken assertions or change pinned fixtures; ask QA to approve any licensed substitute reference.
+Do not weaken assertions or change pinned fixtures.
+The approved AC1 references are Lucide 1.55.0 (ISC), per the PM decision in stakeholder issue #53 (default: Lucide).
 Leave Add Folder unchanged.
 Shared helpers and fake providers are unchanged.
 
@@ -12,7 +13,7 @@ Shared helpers and fake providers are unchanged.
 
 | AC | Scenario | Expected missing-feature assertion |
 | --- | --- | --- |
-| AC1 | ts, json, md, rs, py, unknown and folder rows have pinned icon geometry; folders change on expand and collapse | AC1: every row must render Zed's folder_open icon |
+| AC1 | ts, json, md, rs, py, unknown and folder rows keep Zed's v1.23.2 file type mapping with pinned Lucide geometry; folders change on expand and collapse | AC1: every row must render Lucide's folder-open icon |
 | AC2 | Open two files by keyboard; the active row is gray without a blue frame and the old row loses gray | AC2: active editor file must use One Dark element.selected |
 | AC3 | Focus panel; Down moves the blue frame off the open file; Up returns it; editor focus removes it | AC3: selected row must have a border.focused frame |
 | AC4 | Open a deep file, switch away, collapse its parents, then use the finder to activate its existing tab | AC4: switching editor tabs must expand every collapsed parent |
@@ -42,7 +43,8 @@ Its viewport assertion reads clipping geometry and never scrolls the row on beha
 
 Add exactly one data-testid=project-entry-icon per visible row, including roots.
 Apply it to a rendered inline SVG, a wrapper containing the SVG, or an img loading an SVG.
-The test checks visible SVG geometry against pinned upstream assets, and checks img decoding where applicable.
+The test checks visible SVG geometry against byte-for-byte Lucide 1.55.0 references, and checks img decoding where applicable.
+The geometry comparison is unchanged.
 A decorative label or a data attribute alone does not satisfy AC1.
 No hidden state, mock tree or app-internal selection hook is requested.
 Use a border, outline or box shadow on the row for the focused blue frame.
@@ -50,9 +52,12 @@ The frame test inspects the actual computed style; markers alone do not satisfy 
 
 The pinned One Dark tokens are element.selected = #454a56ff and border.focused = #47679eff.
 See tests/fixtures/zed-project-panel/README.md for exact upstream paths, commit and icon mapping.
-The issue allows Lucide replacements when an upstream icon license is unclear.
-Before replacing any fixture, list the affected icon and its licensed substitute for QA review.
-Do not copy GPL Rust mapping/resolver implementation into the MIT app from these test references.
+AC1: Given a folder with .ts, .json, .md, .rs, .py files, an unknown extension and subfolders, then every row shows an icon chosen by Zed's file type mapping at v1.23.2, folders show a closed or open folder icon, and an unknown type shows the default file icon.
+The drawings are Lucide icons (ISC), not Zed's own GPL icons; see #53 for the license decision (default: Lucide).
+Use folder.svg for closed folders, folder-open.svg for open folders, file.svg for unknown types, file-code.svg for code/typescript/rust/python, book-open.svg for markdown and file-braces.svg for JSON.
+Keep Lucide's complete license notice with the app assets.
+Unused Zed Rust mapping/resolver fixture copies have been removed.
+Do not copy GPL Rust mapping/resolver implementation into the MIT app.
 
 ## AC5 manual check
 
