@@ -56,6 +56,7 @@ const once = (page: Page) => prompt(page).getByRole('button', { name: 'Allow onc
 const session = (page: Page) => prompt(page).getByRole('button', { name: 'Allow for this session', exact: true });
 const deny = (page: Page) => prompt(page).getByRole('button', { name: 'Deny', exact: true });
 async function send(page: Page) {
+  if (!(await chat(page).isVisible())) await page.keyboard.press(process.platform === 'darwin' ? 'Meta+n' : 'Control+n');
   await expect(chat(page), 'Prerequisite story #8 chat is missing; this is not the #9 red baseline').toBeVisible();
   await chat(page).getByRole('textbox', { name: 'Message Claude' }).focus();
   await page.keyboard.insertText('Run the invented permission fixture command');
@@ -300,8 +301,7 @@ test.describe('permission focus after editor', () => {
     await page.keyboard.press(`${modifier}+Shift+e`);
     const panel = page.getByTestId('project-panel');
     await expect(panel).toBeVisible();
-    await panel.getByTestId('project-add-folder').focus();
-    await page.keyboard.press('Enter');
+    await page.keyboard.press(`${modifier}+Shift+a`);
     const entry = (file: string) => panel.getByTestId('project-entry').and(page.locator(`[data-path=${JSON.stringify(file)}]`));
     await expect(entry(fake.folder)).toBeVisible();
     await entry(fake.folder).click();

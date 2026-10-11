@@ -1,12 +1,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
-import { Folders } from './folders.ts';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { Folders, realOrNull } from './folders.ts';
+import { RecentFolders } from './recent-folders.ts';
 import { readDir } from './project-fs.ts';
 import { FileIndex } from './file-index.ts';
 import { EditorFiles } from './editor-files.ts';
 import { createClaudeProvider } from './agents/claude.ts';
 import { Chats } from './agents/chats.ts';
+import { listSessions, openSession } from './agents/claude-sessions.ts';
+import { readDefaultMode } from './agents/claude-settings.ts';
+import { isPermissionMode } from './shared/chat.ts';
+import { readDefaultChatFolder } from './settings.ts';
 import { createQuitGuard } from './agents/quit-guard.ts';
 import { createQuitFlow } from './quit-flow.ts';
 import type { EventChannels, InvokeArgs, InvokeChannel, InvokeResult, SendChannels } from './shared/ipc.ts';
@@ -67,10 +72,14 @@ const fileIndex = new FileIndex(id => folders.list(id), workspaceId => sendToPag
 
 // Claude chat. The agent process lives here; the page only gets events and a narrow API.
 const claude = createClaudeProvider();
+// However the app ends (app.exit included), no Claude process may outlive it.
+process.on('exit', () => claude.killAll());
 const chats = new Chats({
   provider: claude,
   folders: { list: id => folders.list(id) },
+  defaultFolder: () => readDefaultChatFolder(),
   emit: (workspaceId, event) => sendToPage('chat:event', { workspaceId, event }),
+  defaultMode: () => readDefaultMode(process.env),
 });
 
 folders.on('change', payload => {
@@ -81,10 +90,31 @@ folders.on('change', payload => {
 
 handle('project:roots', workspaceId => folders.list(String(workspaceId)));
 
-handle('project:add-folders', async workspaceId => {
-  const picked = await pickFolders();
-  return folders.add(String(workspaceId), picked);
+// Recent folders live in the user data directory. A folder counts as opened when the person picks it.
+const recent = new RecentFolders(path.join(app.getPath('userData'), 'recent-folders.json'));
+
+recent.on('change', () => sendToPage('recent:changed', undefined));
+
+async function pickAndRemember(): Promise<string[]> {
+  // Paths keep the form the dialog gave, as the project panel shows them.
+  const picked = (await pickFolders()).filter(folder => realOrNull(folder) !== null);
+  if (picked.length > 0) recent.add(picked);
+  return picked;
+}
+
+handle('project:pick-folders', () => pickAndRemember());
+
+handle('project:add-folders', async workspaceId => folders.add(String(workspaceId), await pickAndRemember()));
+
+// Only folders from the recent list can be added this way, so the page cannot add arbitrary paths.
+handle('project:add-paths', (workspaceId, paths) => {
+  if (!Array.isArray(paths)) throw new Error('Paths must be a list');
+  const known = paths.filter((folder): folder is string => typeof folder === 'string' && recent.has(folder) && realOrNull(folder) !== null);
+  recent.add(known);
+  return folders.add(String(workspaceId), known);
 });
+
+handle('recent:list', () => recent.get());
 
 handle('project:forget', workspaceId => {
   chats.forget(String(workspaceId));
@@ -100,6 +130,7 @@ handle('finder:query', (workspaceId, text) => {
 });
 
 handle('chat:info', workspaceId => chats.info(String(workspaceId)));
+handle('chat:new', workspaceId => chats.reset(String(workspaceId)));
 handle('chat:send', async (workspaceId, text) => {
   if (typeof text !== 'string' || !text.trim() || text.length > 200000) throw new Error('Message must be non-empty text');
   await claude.ready; // the permission server must be listening before Claude starts
@@ -108,9 +139,47 @@ handle('chat:send', async (workspaceId, text) => {
 handle('chat:permission', (workspaceId, id, answer) => {
   if (typeof id !== 'string' || !answer || typeof answer.allow !== 'boolean') throw new Error('Bad permission answer');
   const message = typeof answer.message === 'string' ? answer.message.slice(0, 2000) : undefined;
-  chats.answerPermission(String(workspaceId), id, { allow: answer.allow, message, scope: answer.scope === 'session' ? 'session' : 'once' });
+  const given = answer.answers;
+  const answers = given && typeof given === 'object' && Object.values(given).every(value => typeof value === 'string') ? { ...given } : undefined;
+  chats.answerPermission(String(workspaceId), id, { allow: answer.allow, message, scope: answer.scope === 'session' ? 'session' : 'once', answers });
 });
 handle('chat:interrupt', workspaceId => { chats.interrupt(String(workspaceId)); });
+handle('chat:mode', workspaceId => chats.mode(String(workspaceId)));
+handle('chat:set-mode', (workspaceId, mode) => {
+  if (!isPermissionMode(mode)) throw new Error('Unknown permission mode');
+  chats.setMode(String(workspaceId), mode);
+});
+
+// Links in chat replies. Only http, https and mailto go to the system browser.
+// With COD_TEST_RECORD_EXTERNAL_URLS=1 the URL is recorded instead of opened, for tests.
+const recordedExternalUrls: string[] | null = process.env.COD_TEST_RECORD_EXTERNAL_URLS === '1' ? [] : null;
+if (recordedExternalUrls) (globalThis as typeof globalThis & { __codTestOpenedExternalURLs?: string[] }).__codTestOpenedExternalURLs = recordedExternalUrls;
+
+async function openExternalLink(url: unknown): Promise<void> {
+  if (typeof url !== 'string' || url.length > 8000) throw new Error('Link must be text');
+  let protocol = '';
+  try { protocol = new URL(url).protocol; } catch { throw new Error('Not a link'); }
+  if (!['http:', 'https:', 'mailto:'].includes(protocol)) throw new Error('This kind of link is not opened');
+  if (recordedExternalUrls) recordedExternalUrls.push(url);
+  else await shell.openExternal(url);
+}
+
+// The window never navigates away from the app page and never opens another window.
+function keepWindowOnApp(win: BrowserWindow): void {
+  win.webContents.on('will-navigate', event => event.preventDefault());
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+}
+
+handle('chat:open-link', url => openExternalLink(url));
+
+// Sessions of the Claude CLI store. Read only; the page can only open one that is listed for the workspace's folders.
+handle('chat:sessions', workspaceId => listSessions(chats.sessionFolders(String(workspaceId))));
+handle('chat:open-session', async (workspaceId, sessionId) => {
+  if (typeof sessionId !== 'string') throw new Error('Session id must be text');
+  const opened = openSession(chats.sessionFolders(String(workspaceId)), sessionId);
+  if (opened) await chats.open(String(workspaceId), opened.id, opened.folder);
+  return opened;
+});
 
 handle('project:read-dir', dir => {
   if (typeof dir !== 'string' || !folders.contains(dir)) throw new Error('Not inside a workspace folder');
@@ -141,6 +210,7 @@ function createWindow(): void {
     },
   });
   mainWindow = win;
+  keepWindowOnApp(win);
   win.on('closed', () => { mainWindow = null; });
   // File watching is out of scope: file lists refresh when the window gains focus.
   win.on('focus', () => fileIndex.markAllStale());

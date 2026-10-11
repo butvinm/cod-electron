@@ -35,6 +35,32 @@ export function visibleRows(roots: string[], expanded: Set<string>, children: Re
   return rows;
 }
 
+// The folders between a root and a file, outermost first, root included. Empty when the file is in no root.
+export function ancestorsOf(roots: string[], file: string): string[] {
+  for (const rootPath of roots) {
+    const sep = rootPath.includes('\\') && !rootPath.includes('/') ? '\\' : '/';
+    const base = rootPath.endsWith(sep) ? rootPath.slice(0, -1) : rootPath;
+    if (!file.startsWith(base + sep)) continue;
+    const dirs = [rootPath];
+    const parts = file.slice(base.length + 1).split(sep).slice(0, -1);
+    let current = base;
+    for (const part of parts) {
+      current += sep + part;
+      dirs.push(current);
+    }
+    return dirs;
+  }
+  return [];
+}
+
+// What to do when the active file may have changed. previous: what was recorded (undefined: never).
+// render: redraw now, because the open-file highlight must go. reveal: the file whose row to expand and select.
+export function revealStep(previous: string | null | undefined, active: string | null): { render: boolean; reveal: string | null } {
+  if (previous === active) return { render: false, reveal: null };
+  if (active === null) return { render: true, reveal: null };
+  return { render: false, reveal: active };
+}
+
 // Maps a key to what the panel should do. Returns null when the key means nothing here.
 export function navigate(rows: Row[], selected: string | null, key: string): Navigation | null {
   if (rows.length === 0) return null;
