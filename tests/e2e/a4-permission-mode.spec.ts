@@ -39,6 +39,9 @@ const test = base.extend<{ fixture: Fixture }>({
         apps.push(app);
         const page = await app.firstWindow();
         await page.waitForLoadState('load');
+        if (await page.getByTestId('start-screen').isVisible()) {
+          await page.keyboard.press(process.platform === 'darwin' ? 'Meta+n' : 'Control+n');
+        }
         await expect(chat(page), 'Prerequisite #8 chat must exist; failure here is not the #33 red baseline').toBeVisible();
         return page;
       } });
