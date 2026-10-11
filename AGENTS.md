@@ -28,8 +28,9 @@ Bugs and "Report problem" folders follow `report-problem`: reproduce as a failin
 
 ## Working with the stakeholder
 
-- The cycle is one day, not a week. Accepted stories merged to `master` are the release; after 0.0.1 each day with accepted stories gets a tag.
-- The stakeholder and the PM meet when the stakeholder opens the PM session, at most once a day by default: demo and accept/reject, escalations, next pick. The agenda is in `plan-iteration`.
+- There are no fixed-length sprints. Accepted stories merged to `master` are the release; from 0.0.1 on, each meeting that accepts stories ends with a tag.
+- A PM session is a sprint. It starts from the files (this file, the last minutes in `docs/meetings/`, the pinned `Queue` issue) and ends with a meeting in the same session: obligations checked, demo and accept/reject, escalations, minutes, and the next sprint's obligations. The next sprint starts in a new session. The agenda is in `plan-iteration`.
+- Every feature that Zed has starts with investigating Zed: its source at the pinned version and stock Zed itself. Look changes come with a screenshot next to stock Zed.
 - Between meetings the team works on its own from the ranked queue (a pinned `Queue` issue). The PM decides technical questions and product details that fit `docs/vision.md`.
 - Only these go to the stakeholder, as an issue labeled `stakeholder` with a default answer: a change to the vision or scope, spending money, anything public about the stakeholder or their employer, and anything that cannot be undone. Work continues on everything not blocked.
 - Obligations: whatever the PM says will be ready by the next meeting is either delivered or comes with a written reason and the next step. Each obligation is a list of numbered checks the stakeholder can verify in a few minutes, plus a "not included" list. The stakeholder accepts or rejects at the meeting.
