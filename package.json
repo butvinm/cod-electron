@@ -2,15 +2,16 @@
   "name": "cod",
   "version": "0.0.0",
   "private": true,
-  "main": "src/main.cjs",
+  "main": "dist/main.js",
   "scripts": {
-    "build": "node scripts/build-editor.mjs",
+    "build": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/build.ts",
     "postinstall": "npm run build",
     "prestart": "npm run build",
     "start": "electron .",
     "pretest:e2e": "npm run build",
     "test:e2e": "playwright test",
-    "test": "node --test tests/unit/*.test.mjs"
+    "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --test tests/unit/*.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.main.json && tsc --noEmit -p tsconfig.renderer.json"
   },
   "devDependencies": {
     "@codemirror/commands": "^6.11.1",
@@ -25,6 +26,7 @@
     "@codemirror/view": "^6.43.14",
     "@lezer/highlight": "^1.2.5",
     "@playwright/test": "1.56.1",
+    "@types/node": "^22.20.5",
     "electron": "38.2.0",
     "esbuild": "^0.28.2",
     "typescript": "5.9.3"
