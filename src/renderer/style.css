@@ -97,7 +97,8 @@ button:hover { background-color: var(--hover); color: var(--text); }
 button:active { background-color: var(--active); }
 button:focus-visible, .tab:focus-visible { outline: 1px solid #47679e; outline-offset: -1px; }
 
-.tab-close { flex: none; width: 18px; height: 18px; line-height: 16px; padding: 0; }
+.tab-close { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; padding: 0; }
+.tab-close svg, .editor-tab-close svg { display: block; flex: none; }
 
 .add {
   flex: none;
@@ -276,7 +277,7 @@ button.project-entry-toggle.open::before { top: 4px; transform: rotate(45deg); }
 
 .finder-result {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
   height: 26px;
   padding: 0 8px;
