@@ -16,7 +16,6 @@ Shared helpers and fake providers are unchanged.
 | AC2 | Open two files by keyboard; the active row is gray without a blue frame and the old row loses gray | AC2: active editor file must use One Dark element.selected |
 | AC3 | Focus panel; Down moves the blue frame off the open file; Up returns it; editor focus removes it | AC3: selected row must have a border.focused frame |
 | AC4 | Open a deep file, switch away, collapse its parents, then use the finder to activate its existing tab | AC4: switching editor tabs must expand every collapsed parent |
-| AC5 | Capture the real Cod panel and require reviewed stock-Zed comparison plus PR attachment evidence | AC5: supply COD_STORY_37_LOOK_EVIDENCE with reviewed stock-Zed comparison and PR attachment |
 
 These are expected failure descriptions, not observed results.
 Electron and browser runs are explicitly deferred to the PM outside the sandbox.
@@ -25,7 +24,7 @@ Stock Zed has not been launched in this QA run.
 
 ## Existing hooks and keyboard paths
 
-Reuse project-panel, project-add-folder, editor-tab with absolute data-path and aria-selected, editor-buffer, file-finder, file-finder-query and file-finder-result.
+Reuse project-panel, project-add-folder, editor-tab with absolute data-path and aria-selected, editor-content, file-finder, file-finder-query and file-finder-result.
 Tree rows have role=treeitem, absolute data-path, aria-selected and aria-expanded for folders.
 The picker uses the existing COD_TEST_PICK_FOLDERS queue; the inherited harness isolates the user profile and drives the real Electron app.
 The story-local fixture creates a real throwaway git repo named panel-look before Electron starts.
@@ -55,37 +54,18 @@ The issue allows Lucide replacements when an upstream icon license is unclear.
 Before replacing any fixture, list the affected icon and its licensed substitute for QA review.
 Do not copy GPL Rust mapping/resolver implementation into the MIT app from these test references.
 
-## AC5 external evidence
+## AC5 manual check
 
-AC5 cannot be fully established by Electron alone: automation cannot prove stock-Zed identity, visual equivalence or a PR attachment's content from a local declaration.
-The test is an evidence gate, not automatic visual approval.
-QA must inspect the actual side-by-side PNG and PR attachment before reporting AC5 PASS.
+AC5 is a manual check, not an end-to-end test.
+The implementation PR must include a screenshot of Cod's panel on the fixture folder and a side-by-side comparison with stock Zed 1.23.2.
+QA must inspect the actual comparison and PR attachment before reporting AC5 PASS.
 The PM should obtain the early look check after icons/highlights work and before AC4 implementation, as the issue asks.
 Open the same generated panel-look folder in stock Zed 1.23.2 with default settings, default keymap and One Dark.
 Show the root expanded, branches collapsed, sample.ts open and sample.json selected in the panel.
 The reference folder can be recreated from the story-local fixture recipe in the spec.
-Capture both panels next to each other, confirm the same rows and no private data, and attach the PNG to the implementation PR.
-
-Set COD_STORY_37_LOOK_EVIDENCE to a local JSON manifest with these fields only after QA reviews the comparison:
-
-```json
-{
-  "story": 37,
-  "zedVersion": "1.23.2",
-  "fixture": "panel-look",
-  "screenshot": "comparison.png",
-  "prAttachment": "https://github.com/user-attachments/assets/REPLACE-WITH-ACTUAL-ATTACHMENT",
-  "reviewedBy": "REPLACE-WITH-ACTUAL-REVIEWER",
-  "sameFixtureVerified": true,
-  "framesChecked": true
-}
-```
-
-The screenshot path is relative to the manifest.
-The image must be a readable side-by-side PNG, at least 480 by 240 pixels.
-The test attaches the supplied comparison and a fresh Cod panel capture to its report.
-Do not invent the review or screenshot to turn this test green.
-Without the manifest AC5 fails intentionally.
+Capture both panels next to each other, confirm the same rows and no private data, and attach the screenshot to the implementation PR.
+Do not add evidence files under tests/.
+No evidence manifest or environment variable is required by the end-to-end suite.
 
 ## Run and hand back
 
@@ -97,8 +77,8 @@ caffeinate -dimsu npx playwright test tests/e2e/c1-project-panel-look.spec.ts --
 ```
 
 The current build exists and deps are installed; after app changes run npm run build before this command.
-For verification with reviewed look evidence, set COD_STORY_37_LOOK_EVIDENCE to the absolute manifest path in the command environment.
 On Linux use xvfb-run -a npx playwright test tests/e2e/c1-project-panel-look.spec.ts --reporter=list.
 
-Hand back the implementation commit/PR, unchanged QA assertions, icon origins and license notices, typecheck output, run log with failure excerpts or PASS per AC, and the reviewed stock-Zed comparison attachment and manifest.
-QA must establish five missing-feature failures on the baseline before implementation starts.
+Hand back the implementation commit/PR, unchanged QA assertions, icon origins and license notices, typecheck output, run log with failure excerpts or PASS per AC, and the reviewed stock-Zed comparison attachment for the AC5 manual check.
+QA must establish four missing-feature failures for AC1-AC4 on the baseline before implementation starts.
+AC5 is reviewed manually on the implementation PR.
