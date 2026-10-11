@@ -23,7 +23,10 @@ const stateFile = `${logFile}.${session}.session.json`;
 if (argv.includes('--resume') && !fs.existsSync(stateFile)) { console.error('Unknown session'); process.exit(1); }
 let state = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, 'utf8')) : { prompts: [], turn: 0 };
 let mcp;
-process.on('exit', () => mcp?.close());
+process.on('exit', code => {
+  log({ kind: 'exit', code, session_id: session });
+  mcp?.close();
+});
 let active = false;
 let closed = false;
 const emit = event => {
