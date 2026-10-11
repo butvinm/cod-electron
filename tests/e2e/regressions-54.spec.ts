@@ -5,16 +5,20 @@ import path from 'node:path';
 import type { Page } from '@playwright/test';
 import { test as base, expect, root } from './helpers/electron';
 import { chat, composer, openInitialChat, replies } from './helpers/new-chat';
-import { pending, response, form, type Fake } from './helpers/ask-user-question';
+import { pending, response, form, chooseFirstAndSubmit, type Fake } from './helpers/ask-user-question';
 import { newWorkspaceKey } from './helpers/zed-keymaps';
 
 const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
 const linkURL = 'https://example.invalid/story-54#quoted';
 type RecordLine = ReturnType<Fake['records']>[number] & { pid?: number; name?: string };
 type Fixture = Omit<Fake, 'records'> & { folders: string[]; records: () => RecordLine[]; release: (name: string) => void };
+const permissionArrivalTest = 'AC5: a permission prompt that arrives while the mode menu is open does not take focus, and Enter meant for the menu does not approve it';
+const questionEscapeTest = 'AC5: Escape on the mode selector with a question pending does not decline the question';
 const scenarios: Record<string, string> = {
   AC2: '54-quoted-reference', AC3: '54-blank-code',
   AC5: '54-stream-then-permission', AC6: 'ask-user-question-keyboard',
+  [permissionArrivalTest]: '54-permission-arrives-in-mode-menu',
+  [questionEscapeTest]: '54-question-selector-escape',
 };
 
 // The automatic fixture prepares invented projects and fake state before the shared
@@ -33,8 +37,8 @@ const test = base.extend<{ regression: Fixture }>({
     }
     writeFileSync(path.join(config, 'settings.json'), '{}\n');
     const ac = testInfo.title.match(/^AC\d+/)![0];
-    const scenario = scenarios[ac] ?? 'reply';
-    const requests: Fake['requests'] = ac === 'AC6'
+    const scenario = scenarios[testInfo.title] ?? scenarios[ac] ?? 'reply';
+    const requests: Fake['requests'] = ac === 'AC6' || testInfo.title === questionEscapeTest
       ? JSON.parse(readFileSync(path.join(root, 'tests/fakes/claude/scenarios', `${scenario}.json`), 'utf8')).turns
         .map((turn: { permission?: Fake['requests'][number] }[]) => turn.find(step => step.permission)!.permission!)
       : [];
@@ -229,6 +233,79 @@ test('AC5: Escape closes the permission mode menu without interrupting a reply o
   await expect(replies(page).last()).toHaveAttribute('data-state', 'complete');
   expect(regression.records().filter(record => record.kind === 'signal')).toHaveLength(0);
   expect(regression.records().filter(record => record.kind === 'start').map(record => record.pid)).toEqual([pid]);
+});
+
+test(permissionArrivalTest, async ({ cod: { page }, regression }) => {
+  await send(page);
+  await expect(replies(page).last()).toContainText('First fragment');
+  await expect(replies(page).last()).toHaveAttribute('data-state', 'streaming');
+  await expect.poll(() => regression.records().filter(record => record.kind === 'gate').map(record => record.name)).toContain('permission-arrival');
+  const selector = chat(page).getByTestId('chat-permission-mode');
+  const menu = chat(page).getByRole('menu', { name: 'Permission mode', exact: true });
+  const manual = menu.getByRole('menuitemradio', { name: 'Manual', exact: true });
+  await selector.focus();
+  await page.keyboard.press('Enter');
+  await expect(menu).toBeVisible();
+  await expect(manual).toBeFocused();
+  regression.release('permission-arrival');
+  const prompt = chat(page).getByTestId('chat-permission-prompt');
+  await expect(prompt).toBeVisible();
+  await expect.poll(() => regression.records().filter(record => record.kind === 'permission-request').length).toBe(1);
+  const promptText = await prompt.innerText();
+  await expect(menu, 'AC5: prompt arrival must leave the mode menu open').toBeVisible();
+  await expect(manual, 'AC5: prompt arrival must preserve mode menu focus').toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(menu).toBeHidden();
+  await expect(selector).toBeFocused();
+  await expect(selector).toHaveText('Manual');
+  await expect(prompt, 'AC5: Enter for the mode menu must leave permission pending').toBeVisible();
+  await expect(prompt).toHaveText(promptText);
+  for (const name of ['Allow once', 'Allow for this session', 'Deny']) await expect(prompt.getByRole('button', { name, exact: true })).toBeEnabled();
+  expect(regression.records().filter(record => record.kind === 'permission-answer')).toHaveLength(0);
+  expect(regression.records().filter(record => record.kind === 'tool-run')).toHaveLength(0);
+  expect(regression.records().filter(record => record.kind === 'signal')).toHaveLength(0);
+  await expect(chat(page).getByTestId('chat-interrupted')).toHaveCount(0);
+  // Resolve deliberately only after the menu key has left the request pending.
+  await prompt.getByRole('button', { name: 'Allow once', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  expect((await response(regression)).answer?.behavior).toBe('allow');
+  await expect(replies(page).last()).toContainText('Allowed command complete.');
+  await expect(replies(page).last()).toHaveAttribute('data-state', 'complete');
+  expect(regression.records().filter(record => record.kind === 'permission-answer')).toHaveLength(1);
+});
+
+test(questionEscapeTest, async ({ cod: { page }, regression }) => {
+  await send(page, 'Ask about the invented fixture size');
+  await expect.poll(() => regression.records().filter(record => record.kind === 'gate').map(record => record.name)).toContain('question-arrival');
+  regression.release('question-arrival');
+  await expect.poll(() => regression.records().filter(record => record.kind === 'permission-request')[0]?.request).toEqual(regression.requests[0]);
+  await expect(form(page)).toBeVisible();
+  const questionText = await form(page).innerText();
+  const selector = chat(page).getByTestId('chat-permission-mode');
+  const menu = chat(page).getByRole('menu', { name: 'Permission mode', exact: true });
+  await selector.focus();
+  await expect(selector).toBeFocused();
+  await expect(menu).toBeHidden();
+  await page.keyboard.press('Escape');
+  await expect(form(page), 'AC5: Escape on the closed mode selector must leave the question pending').toBeVisible();
+  await expect(form(page)).toHaveText(questionText);
+  await expect(selector).toBeFocused();
+  await expect(selector).toHaveText('Manual');
+  await expect(menu).toBeHidden();
+  await expect(form(page).getByRole('button', { name: 'Submit', exact: true })).toBeEnabled();
+  await expect(chat(page).getByTestId('chat-question-history')).toHaveCount(0);
+  await expect(chat(page).getByTestId('chat-interrupted')).toHaveCount(0);
+  expect(regression.records().filter(record => record.kind === 'permission-answer')).toHaveLength(0);
+  expect(regression.records().filter(record => record.kind === 'tool-run')).toHaveLength(0);
+  expect(regression.records().filter(record => record.kind === 'signal')).toHaveLength(0);
+  expect(regression.records().filter(record => record.kind === 'stdin')).toHaveLength(1);
+  // An explicit answer proves the pending request still works and sends no denial.
+  await form(page).getByRole('radio', { name: 'Small', exact: true }).focus();
+  await chooseFirstAndSubmit(page, regression.requests[0]!.input.questions);
+  expect((await response(regression)).answer?.behavior).toBe('allow');
+  await expect(replies(page).last()).toHaveAttribute('data-state', 'complete');
+  await expect(replies(page).last()).toHaveText('Answers received. Continuing the fixture.');
+  expect(regression.records().filter(record => record.kind === 'permission-answer')).toHaveLength(1);
 });
 
 test('AC6: declining a question with Escape leaves a collapsed Declined history line', async ({ cod: { page }, regression }) => {
