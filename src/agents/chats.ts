@@ -1,6 +1,7 @@
 import os from 'node:os';
 import type { ChatEvent, ChatInfo, PermissionAnswer, PermissionMode } from '../shared/chat.ts';
 import type { AgentProvider, AgentSession } from './provider.ts';
+import { resumeCommand } from './handoff.ts';
 
 function permissionKey(event: { tool: string; input: unknown }): string {
   return JSON.stringify([event.tool, event.input]);
@@ -176,6 +177,18 @@ export class Chats {
     chat.mode = mode;
     const session = chat.session;
     if (session && session.alive && !session.interrupting) session.setPermissionMode?.(mode);
+  }
+
+  // Continue in Terminal: returns the command and ends the idle process, so the terminal is
+  // the only writer. The next message starts a process that resumes the same session.
+  // Returns null while a turn runs or before the session has an id.
+  handoff(workspaceId: string): Promise<string | null> {
+    const chat = this.chats.get(workspaceId);
+    if (!chat || chat.busy || !chat.sessionId) return Promise.resolve(null);
+    const command = resumeCommand(chat.cwd ?? this._wanted(workspaceId), chat.sessionId);
+    const session = chat.session;
+    chat.session = null;
+    return Promise.resolve(session ? session.close() : undefined).then(() => command);
   }
 
   interrupt(workspaceId: string): void {

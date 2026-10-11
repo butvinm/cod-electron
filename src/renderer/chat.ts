@@ -50,7 +50,18 @@ export function create({ workspaceId, chatApi }: ChatOptions): ChatView {
   const session = node('span', { class: 'chat-session' }, node('span', { text: 'Session ' }), sessionId);
   session.hidden = true;
   const status = node('span', { class: 'chat-status', testid: 'chat-session-status', 'aria-live': 'polite', text: 'Ready' });
-  const header = node('div', { class: 'chat-header' }, directory, session, status);
+  const handoffButton = node('button', { class: 'chat-handoff', type: 'button', text: 'Continue in Terminal' });
+  const handoffCopied = node('span', { class: 'chat-handoff-copied', 'aria-live': 'polite' });
+  let copiedTimer: ReturnType<typeof setTimeout> | undefined;
+  handoffButton.addEventListener('click', () => {
+    chatApi.handoff(workspaceId).then(done => {
+      if (!done) return;
+      handoffCopied.textContent = 'Copied';
+      clearTimeout(copiedTimer);
+      copiedTimer = setTimeout(() => { handoffCopied.textContent = ''; }, 2000);
+    }).catch(console.error);
+  });
+  const header = node('div', { class: 'chat-header', testid: 'chat-header' }, directory, session, handoffButton, handoffCopied, status);
   const folderNotice = node('div', { class: 'chat-folder-notice', testid: 'chat-folder-notice', role: 'status' });
   folderNotice.hidden = true;
   const promptBox = node('div', { class: 'chat-permission', testid: 'chat-permission-prompt', role: 'group', 'aria-label': 'Permission request' });
@@ -345,6 +356,9 @@ export function create({ workspaceId, chatApi }: ChatOptions): ChatView {
       session.hidden = false;
     }
     element.classList.toggle('chat-busy', state.busy);
+    handoffButton.hidden = !state.sessionId;
+    handoffButton.disabled = state.busy;
+    handoffButton.title = state.busy ? 'Wait for the turn to finish or interrupt first' : 'Copy the command that continues this chat in a terminal';
     status.textContent = statusOf(state);
     modeSelector.show(state.mode);
     drawPrompt();

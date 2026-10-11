@@ -43,6 +43,21 @@
 }
 
 .chat-session { flex: none; white-space: nowrap; }
+.chat-handoff {
+  flex: none;
+  margin-left: auto;
+  padding: 2px 8px;
+  color: inherit;
+  font: inherit;
+  background: transparent;
+  border: 1px solid var(--border-variant);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.chat-handoff:hover:not(:disabled) { color: var(--text); }
+.chat-handoff:disabled { opacity: 0.5; cursor: default; }
+.chat-handoff[hidden] { display: none; }
+.chat-handoff-copied { flex: none; min-width: 0; }
 .chat-session-id { font-family: ui-monospace, Menlo, Consolas, monospace; }
 
 .chat-transcript {

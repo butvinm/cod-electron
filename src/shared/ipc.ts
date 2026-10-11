@@ -76,6 +76,8 @@ export interface InvokeChannels {
   'chat:mode': { args: [workspaceId: string]; result: PermissionMode };
   'chat:set-mode': { args: [workspaceId: string, mode: PermissionMode]; result: void };
   'chat:open-link': { args: [url: string]; result: void };
+  // Copies the terminal command to the clipboard and ends the idle process. False when it cannot be done now.
+  'chat:handoff': { args: [workspaceId: string]; result: boolean };
   'editor:read': { args: [workspaceId: string, file: string]; result: FileContents };
   'editor:write': { args: [workspaceId: string, file: string, contents: FileContents]; result: void };
 }
@@ -118,6 +120,8 @@ export interface CodApi {
     setMode(workspaceId: string, mode: PermissionMode): Promise<void>;
     // Opens an http, https or mailto link from a reply in the system browser.
     openLink(url: string): Promise<void>;
+    // Continue in Terminal: copies `cd '<folder>' && claude --resume <id>` and ends the idle process. Resolves false when a turn runs.
+    handoff(workspaceId: string): Promise<boolean>;
     permission(workspaceId: string, id: string, answer: PermissionAnswer): Promise<void>;
     onEvent(callback: (workspaceId: string, event: ChatEvent) => void): void;
   };

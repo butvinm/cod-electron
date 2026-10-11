@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron';
 import { Folders, realOrNull } from './folders.ts';
 import { RecentFolders } from './recent-folders.ts';
 import { readDir } from './project-fs.ts';
@@ -141,6 +141,12 @@ handle('chat:permission', (workspaceId, id, answer) => {
   const given = answer.answers;
   const answers = given && typeof given === 'object' && Object.values(given).every(value => typeof value === 'string') ? { ...given } : undefined;
   chats.answerPermission(String(workspaceId), id, { allow: answer.allow, message, scope: answer.scope === 'session' ? 'session' : 'once', answers });
+});
+handle('chat:handoff', async workspaceId => {
+  const command = await chats.handoff(String(workspaceId));
+  if (command === null) return false;
+  clipboard.writeText(command);
+  return true;
 });
 handle('chat:interrupt', workspaceId => { chats.interrupt(String(workspaceId)); });
 handle('chat:mode', workspaceId => chats.mode(String(workspaceId)));

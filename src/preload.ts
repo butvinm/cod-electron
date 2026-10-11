@@ -101,6 +101,7 @@ const cod: CodApi = {
     mode: workspaceId => invoke('chat:mode', workspaceId),
     setMode: (workspaceId, mode) => invoke('chat:set-mode', workspaceId, mode),
     openLink: url => invoke('chat:open-link', url),
+    handoff: workspaceId => invoke('chat:handoff', workspaceId),
     permission: (workspaceId, id, answer) => invoke('chat:permission', workspaceId, id, answer),
     onEvent(callback) {
       on('chat:event', payload => callback(payload.workspaceId, payload.event));
