@@ -1,6 +1,6 @@
 import type { Action, DirEntry } from '../shared/ipc.ts';
 import { createState, freeze, add, activate, step, close, type WorkspacesState } from './workspaces.ts';
-import { visibleRows, navigate, createPanelState, ancestorsOf, type PanelState } from './project-tree.ts';
+import { visibleRows, navigate, createPanelState, ancestorsOf, revealStep, type PanelState } from './project-tree.ts';
 import { iconNameFor } from './file-icon-names.ts';
 import { fileIcon } from './file-icons.ts';
 import { confirmOrKeep } from './editor-tabs.ts';
@@ -138,16 +138,17 @@ const revealed: Record<string, string | null | undefined> = {};
 async function revealActive(): Promise<void> {
   const id = state.activeId;
   const file = activeFileOf();
-  if (revealed[id] === file) return;
+  const step = revealStep(revealed[id], file);
   revealed[id] = file;
-  if (file === null) return;
+  if (step.render) render();
+  if (step.reveal === null) return;
   const ps = panelOf(id);
-  for (const dir of ancestorsOf(rootsOf[id] || [], file)) {
+  for (const dir of ancestorsOf(rootsOf[id] || [], step.reveal)) {
     if (!listings[dir]) await loadDir(dir);
     ps.expanded.add(dir);
   }
   if (revealed[id] !== file) return;
-  ps.selected = file;
+  ps.selected = step.reveal;
   render();
 }
 new MutationObserver(() => { void revealActive(); }).observe(editor.element, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-selected'] });

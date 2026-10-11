@@ -1,8 +1,8 @@
 # Project panel icons
 
-These SVG files are copied unchanged from Zed v1.23.2 (`assets/icons/file_icons/`), the icon set Zed's default icon theme uses.
-`LICENSES` is the notice file that ships next to them in Zed's `assets/icons/`.
-That notice names only Lucide (ISC) and does not say which icon is which.
-The extension to icon mapping in `../file-icon-names.ts` is written for Cod from the table in Zed's default icon theme, not copied from its Rust code.
+These SVG files are copied unchanged from `icons/` in lucide-static 1.55.0 (https://github.com/lucide-icons/lucide), ISC license.
+`LICENSE` is the package's license text.
+Zed's own icon drawings are not used.
 
-Icons: typescript, javascript, react, code, book, rust, python, css, html, toml, yaml, lock, terminal, settings, image, file, folder, folder_open.
+Files: folder, folder-open, file, file-code, file-braces, book-open, file-image, file-lock.
+The mapping from file names to these icons is in `../file-icon-names.ts`. It follows the file kinds of Zed's default icon theme (v1.23.2), written for Cod, not copied from Zed's code.

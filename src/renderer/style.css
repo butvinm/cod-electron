@@ -223,8 +223,6 @@ button:focus-visible, .tab:focus-visible { outline: 1px solid #47679e; outline-o
 }
 
 .project-entry-icon svg { width: 16px; height: 16px; }
-.project-entry-icon [stroke="black"] { stroke: currentColor; }
-.project-entry-icon [fill="black"] { fill: currentColor; }
 
 .project-entry-label {
   min-width: 0;
