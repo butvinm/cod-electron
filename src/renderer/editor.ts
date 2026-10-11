@@ -3,6 +3,7 @@
 // The tab list logic is in editor-tabs.ts and CodeMirror is behind editor-cm.ts.
 import type { EditorState, Text } from '@codemirror/state';
 import type { Eol } from '../shared/ipc.ts';
+import { closeIcon } from './icons.ts';
 import * as codEditor from './editor-cm.ts';
 import { createTabs, open as openTab, activate as activateTab, close as closeTab, displayPath, moveChoice, errorMessage, attemptSave, createLocks, editFilter, type Tabs } from './editor-tabs.ts';
 
@@ -157,7 +158,7 @@ export function create({ roots, focusFallback }: EditorOptions): Editor {
         tabindex: selected ? '0' : '-1',
       });
       if (buffers.get(file)?.dirty) node.append(el('span', { class: 'editor-unsaved', testid: 'editor-unsaved-indicator', 'aria-label': 'Unsaved changes' }));
-      const close = el('button', { class: 'editor-tab-close', 'aria-label': `Close ${basename(file)}`, tabindex: '-1', text: String.fromCharCode(0xd7) });
+      const close = el('button', { class: 'editor-tab-close', 'aria-label': `Close ${basename(file)}`, tabindex: '-1' }, closeIcon());
       node.append(el('span', { class: 'editor-tab-label', testid: 'editor-tab-label', text: basename(file) }), close);
       node.addEventListener('click', () => { if (current !== null) select(current, file); view.focus(); });
       node.addEventListener('keydown', event => {
