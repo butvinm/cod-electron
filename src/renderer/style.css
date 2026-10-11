@@ -309,3 +309,27 @@ button.project-entry-toggle.open::before { top: 4px; transform: rotate(45deg); }
 }
 
 .finder-match { color: #74ade8; font-weight: 600; }
+
+/* Claude session picker: title on the left, age on the right, as in Zed's thread history. */
+.session-result { justify-content: space-between; }
+.session-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+.session-age { flex: none; color: var(--text-muted); font-size: 0.9em; }
+.session-empty { padding: 6px 8px; color: var(--text-muted); }
+
+.chat-history-button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  margin-left: auto;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.chat-history-button:hover { background-color: var(--hover); color: var(--text); }
+.chat-history-button:focus-visible { outline: 1px solid #47679e; }

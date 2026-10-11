@@ -9,6 +9,7 @@ import * as Chat from './chat.ts';
 import { closeIcon } from './icons.ts';
 import * as FileFinder from './file-finder.ts';
 import * as RecentPicker from './recent-picker.ts';
+import * as SessionPicker from './session-picker.ts';
 import * as StartScreen from './start-screen.ts';
 
 const root = document.getElementById('cod-window') as HTMLElement;
@@ -31,7 +32,7 @@ const editor = Editor.create({
 
 // Each workspace has one chat. Its DOM is kept, so render() only moves it into the new area.
 const chats: Record<string, Chat.ChatView | undefined> = {};
-const chatOf = (id: string): Chat.ChatView => (chats[id] = chats[id] || Chat.create({ workspaceId: id, chatApi: window.cod.chat }));
+const chatOf = (id: string): Chat.ChatView => (chats[id] = chats[id] || Chat.create({ workspaceId: id, chatApi: window.cod.chat, openHistory: () => toggleHistory() }));
 
 // Workspaces whose chat is open in the main area. Without a chat, an empty main area shows the start screen.
 const chatShown: Record<string, boolean | undefined> = {};
@@ -232,6 +233,7 @@ function render(): void {
   // While the finder is open it keeps focus, whatever redraws underneath.
   if (finder.isOpen()) finder.focus();
   else if (picker.isOpen()) picker.focus();
+  else if (sessionPicker.isOpen()) sessionPicker.focus();
   else if (panel && focusPanelNext) panel.focus({ preventScroll: true });
   else if (editorHadFocus) editor.focus();
   else if (chatFocus) chatFocus.focus({ preventScroll: true });
@@ -247,6 +249,7 @@ function update(next: WorkspacesState): void {
   if (switched) {
     finder.close();
     picker.close();
+    sessionPicker.close();
   }
   state = next;
   for (const ws of gone) {
@@ -320,6 +323,41 @@ const picker = RecentPicker.create({
   restoreFocus,
 });
 
+// The Claude session picker has its own container, next to the other two.
+const sessionRoot = document.createElement('div');
+sessionRoot.id = 'session-root';
+document.body.append(sessionRoot);
+
+const sessionPicker = SessionPicker.create({
+  container: sessionRoot,
+  load: () => window.cod.chat.sessions(state.activeId),
+  choose: session => { void openSession(state.activeId, session.id); },
+  restoreFocus,
+});
+
+function toggleHistory(): void {
+  if (!chatShown[state.activeId]) return;
+  finder.close();
+  picker.close();
+  sessionPicker.toggle();
+}
+
+// Picking a session replaces the chat, like New Claude Chat, and shows the session's past turns.
+async function openSession(id: string, sessionId: string): Promise<void> {
+  let opened;
+  try { opened = await window.cod.chat.openSession(id, sessionId); } catch (error) { console.error(error); return; }
+  if (!opened) return;
+  chats[id]?.element.remove();
+  delete chats[id];
+  chatShown[id] = true;
+  const view = chatOf(id);
+  view.load([{ type: 'session', id: opened.id }, ...opened.events]);
+  if (id === state.activeId) {
+    render();
+    view.composer.focus();
+  }
+}
+
 function startScreen(): HTMLElement {
   return StartScreen.create({
     mac,
@@ -367,10 +405,11 @@ window.cod.project.onFinderRebuilt(workspaceId => finder.refresh(workspaceId));
 const actions: Record<Action, () => unknown> = {
   save: () => editor.save(),
   'close-tab': () => editor.closeActive(),
-  'file-finder': () => { picker.close(); finder.toggle(); },
+  'file-finder': () => { picker.close(); sessionPicker.close(); finder.toggle(); },
   'open-folder': openFolder,
-  'open-recent': () => { finder.close(); picker.toggle(); },
+  'open-recent': () => { finder.close(); sessionPicker.close(); picker.toggle(); },
   'new-chat': newChat,
+  'session-history': toggleHistory,
   'add-folder': () => window.cod.project.addFolders(state.activeId).catch(console.error),
   'recent-1': () => startVisible() && openFolders(recents.slice(0, 1)),
   'recent-2': () => startVisible() && openFolders(recents.slice(1, 2)),
@@ -417,7 +456,7 @@ window.addEventListener('keydown', event => {
     chat.interrupt();
     return;
   }
-  if (editor.promptOpen() || finder.isOpen() || picker.isOpen()) return;
+  if (editor.promptOpen() || finder.isOpen() || picker.isOpen() || sessionPicker.isOpen()) return;
   if (chat?.interrupt()) event.preventDefault();
 }, true);
 

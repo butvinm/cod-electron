@@ -5,7 +5,7 @@ import type { CodApi } from '../shared/ipc.ts';
 import { createChat, reduce, toolTarget, toolInputText, statusOf, permissionText, queueHint, promptFocusTarget, type ChatItem, type ChatModelEvent, type PermissionRequest } from './chat-model.ts';
 import { renderMarkdown } from './markdown.ts';
 import { createModeSelector } from './chat-mode.ts';
-import { nextPermissionMode, type PermissionMode } from '../shared/chat.ts';
+import { nextPermissionMode, type PermissionMode, type SessionEvent } from '../shared/chat.ts';
 import { createQuestionForm, type QuestionForm } from './chat-question.ts';
 import { parseQuestions, DECLINED, QUESTION_TOOL, type Question } from './question-model.ts';
 
@@ -25,11 +25,28 @@ function node<K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<strin
 export interface ChatOptions {
   workspaceId: string;
   chatApi: CodApi['chat'];
+  // The header button asks the app to open the session picker.
+  openHistory?: () => void;
+}
+
+// A clock with a counter-clockwise arrow, like Zed's history icon.
+function historyIcon(): SVGSVGElement {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  for (const [name, value] of Object.entries({ width: '16', height: '16', viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' })) svg.setAttribute(name, value);
+  for (const d of ['M2.5 8a5.5 5.5 0 1 0 1.6-3.9', 'M2.5 2.5v2.8h2.8', 'M8 5v3l2 1.2']) {
+    const path = document.createElementNS(ns, 'path');
+    for (const [name, value] of Object.entries({ d, stroke: 'currentColor', 'stroke-width': '1.2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })) path.setAttribute(name, value);
+    svg.append(path);
+  }
+  return svg;
 }
 
 export interface ChatView {
   element: HTMLElement;
   apply(event: ChatModelEvent): void;
+  // The past turns of an opened CLI session, drawn in one go.
+  load(events: SessionEvent[]): void;
   refreshInfo(): void;
   // Esc is routed here by the app, wherever focus is in the workspace.
   // Returns true when a running reply was interrupted or a prompt took the key.
@@ -40,7 +57,7 @@ export interface ChatView {
   composer: HTMLTextAreaElement;
 }
 
-export function create({ workspaceId, chatApi }: ChatOptions): ChatView {
+export function create({ workspaceId, chatApi, openHistory = () => {} }: ChatOptions): ChatView {
   let state = createChat();
   const nodes = new Map<number, { item: ChatItem; element: HTMLElement }>(); // item key -> drawn item
   const expanded = new Set<number>();    // item keys of open tool blocks
@@ -50,7 +67,10 @@ export function create({ workspaceId, chatApi }: ChatOptions): ChatView {
   const session = node('span', { class: 'chat-session' }, node('span', { text: 'Session ' }), sessionId);
   session.hidden = true;
   const status = node('span', { class: 'chat-status', testid: 'chat-session-status', 'aria-live': 'polite', text: 'Ready' });
-  const header = node('div', { class: 'chat-header' }, directory, session, status);
+  // Opens the Claude session picker (Cmd-G / Ctrl-G does the same).
+  const historyButton = node('button', { class: 'chat-history-button', type: 'button', 'aria-label': 'Claude session history', title: 'Claude session history' }, historyIcon());
+  historyButton.addEventListener('click', () => openHistory());
+  const header = node('div', { class: 'chat-header' }, directory, session, historyButton, status);
   const folderNotice = node('div', { class: 'chat-folder-notice', testid: 'chat-folder-notice', role: 'status' });
   folderNotice.hidden = true;
   const promptBox = node('div', { class: 'chat-permission', testid: 'chat-permission-prompt', role: 'group', 'aria-label': 'Permission request' });
@@ -392,6 +412,13 @@ export function create({ workspaceId, chatApi }: ChatOptions): ChatView {
     });
   }
 
+  // Fills the chat with the past turns of a stored session. They are drawn once, not event by event.
+  function load(events: SessionEvent[]): void {
+    for (const event of events) state = reduce(state, event);
+    sync();
+    transcript.scrollTop = transcript.scrollHeight;
+  }
+
   composer.addEventListener('keydown', event => {
     // Shift+Tab cycles the permission mode, as in Claude Code. The focus and the draft stay.
     if (event.key === 'Tab' && event.shiftKey && !event.isComposing && !event.metaKey && !event.ctrlKey && !event.altKey) {
@@ -418,5 +445,5 @@ export function create({ workspaceId, chatApi }: ChatOptions): ChatView {
 
   refreshInfo();
   chatApi.mode(workspaceId).then(mode => apply({ type: 'mode', mode })).catch(console.error);
-  return { element, apply, refreshInfo, interrupt, hasPermission: () => state.permission !== null, focusPrompt, isBusy: () => state.busy, composer };
+  return { element, apply, load, refreshInfo, interrupt, hasPermission: () => state.permission !== null, focusPrompt, isBusy: () => state.busy, composer };
 }
