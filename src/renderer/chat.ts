@@ -164,7 +164,9 @@ export function create({ workspaceId, chatApi, openHistory = () => {}, openFile 
       node('span', { class: 'chat-tool-chevron', 'aria-hidden': 'true' }),
       node('span', { class: 'chat-tool-name', text: item.name })];
     const link = toolFileLink(item);
-    if (!link) summaryKids.push(' ', node('span', { class: 'chat-tool-target', text: toolTarget(item.input) }));
+    // The link cannot sit inside the button, so a file row keeps the file in the button's name
+    // as hidden text, and the link draws it.
+    summaryKids.push(' ', node('span', { class: link ? 'chat-tool-target chat-tool-name-only' : 'chat-tool-target', text: toolTarget(item.input) }));
     const summary = node('button', { class: 'chat-tool-summary', type: 'button', 'aria-expanded': 'false' }, ...summaryKids);
     const body = node('div', { class: 'chat-tool-body' });
     const head = link ? node('div', { class: 'chat-tool-head' }, summary, link) : summary;
