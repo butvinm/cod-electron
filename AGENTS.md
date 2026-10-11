@@ -85,6 +85,12 @@ Role definitions live in `.claude/agents/`. The PM starts the developer as a Cla
 - Cod is a plain good IDE plus its own small set: agent chats, review, `codctl` and workspaces. Nothing from one person's setup (keymap, settings, workflow) is built in.
 - Small codebase, clear modules, few dependencies, tests for the core.
 
+## Stack
+
+- Electron, TypeScript in strict mode for all app code and tests, bundled with esbuild; `tsc --noEmit` runs in CI.
+- CodeMirror 6 for the editor, Playwright for Electron for end-to-end tests, node:test for unit tests.
+- A change of stack is a PM decision recorded in an issue, never a developer default.
+
 ## Text rules (all files, commits, issues, PRs)
 
 - No em dashes, en dashes, ellipsis characters, curly quotes, unicode arrows or non-breaking spaces. Use " - ", "-", "...", straight quotes and "->". Exception: upstream files pinned byte for byte as test fixtures (for example Zed's keymaps and settings under `tests/fixtures/`) stay verbatim.
