@@ -153,7 +153,7 @@ export class Chats {
     if (key === undefined) return;
     chat.asked.delete(id);
     if (answer.allow && answer.scope === 'session') chat.allowed.add(key);
-    chat.session.answerPermission(id, { allow: answer.allow, message: answer.message });
+    chat.session.answerPermission(id, { allow: answer.allow, message: answer.message, ...(answer.answers ? { answers: answer.answers } : {}) });
   }
 
   interrupt(workspaceId: string): void {

@@ -9,7 +9,8 @@ export interface AgentSession {
   // Ends the turn; the process stops and onEvent gets { type: 'interrupted' }.
   interrupt(): void;
   // Replies to a 'permission-request' event. Claude waits until this is called.
-  answerPermission(id: string, answer: { allow: boolean; message?: string }): void;
+  // answers is set for AskUserQuestion: the session returns it with the question input.
+  answerPermission(id: string, answer: { allow: boolean; message?: string; answers?: Record<string, string> }): void;
   // Stops the process without a visible event. The promise resolves once it and everything it started is gone.
   close(): Promise<void> | void;
   // True until the process has exited.
