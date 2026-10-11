@@ -4,29 +4,36 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-// Removes // and /* */ comments and trailing commas. Text inside strings stays as it is.
+// Removes // and /* */ comments and trailing commas in one scan that knows where strings are.
+// Text inside strings stays as it is. An unterminated block comment throws.
 export function stripJsonComments(text: string): string {
-  let out = '';
+  const out: string[] = [];
+  let comma = -1; // index in out of a comma that only whitespace or comments follow
   let i = 0;
   while (i < text.length) {
     const ch = text[i];
     if (ch === '"') {
       let j = i + 1;
       while (j < text.length && text[j] !== '"') j += text[j] === '\\' ? 2 : 1;
-      out += text.slice(i, j + 1);
+      out.push(text.slice(i, j + 1));
       i = j + 1;
+      comma = -1;
     } else if (ch === '/' && text[i + 1] === '/') {
       while (i < text.length && text[i] !== '\n') i++;
     } else if (ch === '/' && text[i + 1] === '*') {
       const end = text.indexOf('*/', i + 2);
-      i = end < 0 ? text.length : end + 2;
-      out += ' ';
+      if (end < 0) throw new SyntaxError('Unterminated comment');
+      i = end + 2;
+      out.push(' ');
     } else {
-      out += ch;
+      if (ch === ',') comma = out.length;
+      else if ((ch === '}' || ch === ']') && comma >= 0) out[comma] = '';
+      if (!/\s/.test(ch) && ch !== ',') comma = -1;
+      out.push(ch);
       i++;
     }
   }
-  return out.replace(/,(\s*[}\]])/g, '$1');
+  return out.join('');
 }
 
 export function settingsPath(env: NodeJS.ProcessEnv = process.env, home: string = os.homedir()): string {

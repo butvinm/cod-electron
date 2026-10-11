@@ -17,6 +17,31 @@ test('comments and trailing commas are removed, strings stay', () => {
   assert.deepEqual(JSON.parse(stripJsonComments(text)), { a: 'x // y /* z */', b: [1, 2] });
 });
 
+test('commas inside strings are kept, an unterminated comment is invalid', () => {
+  assert.deepEqual(JSON.parse(stripJsonComments('{ "a": "/tmp/folder,}", "b": "x,]", }')), { a: '/tmp/folder,}', b: 'x,]' });
+  assert.deepEqual(JSON.parse(stripJsonComments('[1, // c\n 2, /* d */ ]')), [1, 2]);
+  assert.throws(() => stripJsonComments('{ "a": 1 } /* open'), SyntaxError);
+  withDir(dir => {
+    const file = path.join(dir, 'settings.json');
+    writeFileSync(file, `{ "default_chat_folder": ${JSON.stringify(dir)} } /* open`);
+    const result = readDefaultChatFolder(file);
+    assert.equal(result.folder, null);
+    assert.match(result.notice ?? '', /Invalid JSON in settings\.json/);
+  });
+});
+
+test('chats: a replaced chat forwards no event of its old process', () => {
+  const emitted: string[] = [];
+  let onEvent: StartOptions['onEvent'] = () => {};
+  const provider = { start(options: StartOptions) { onEvent = options.onEvent; return { alive: true, interrupting: false, send() {}, interrupt() {}, answerPermission() {}, close() {} } as unknown as AgentSession; } } as unknown as AgentProvider;
+  const chats = new Chats({ provider, folders: { list: () => [] }, emit: (_id, event) => emitted.push(event.type), home: '/home' });
+  chats.send('w', 'hi');
+  chats.reset('w');
+  onEvent({ type: 'interrupted' });
+  onEvent({ type: 'turn-end' });
+  assert.deepEqual(emitted, []);
+});
+
 test('settings path follows XDG_CONFIG_HOME, else ~/.config', () => {
   assert.equal(settingsPath({ XDG_CONFIG_HOME: '/x' }, '/h'), path.join('/x', 'cod', 'settings.json'));
   assert.equal(settingsPath({}, '/h'), path.join('/h', '.config', 'cod', 'settings.json'));

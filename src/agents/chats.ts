@@ -11,6 +11,8 @@ interface Chat {
   sessionId: string | null;
   cwd: string | null;
   busy: boolean;
+  // Set when New Claude Chat replaced this chat: no event of it is forwarded any more.
+  discarded: boolean;
   // Requests approved for this session.
   allowed: Set<string>;
   // Request id -> key of a request on screen.
@@ -80,7 +82,7 @@ export class Chats {
   _chat(workspaceId: string): Chat {
     let chat = this.chats.get(workspaceId);
     if (!chat) {
-      chat = { session: null, sessionId: null, cwd: null, busy: false, allowed: new Set(), asked: new Map() };
+      chat = { session: null, sessionId: null, cwd: null, busy: false, discarded: false, allowed: new Set(), asked: new Map() };
       this.chats.set(workspaceId, chat);
     }
     return chat;
@@ -113,6 +115,8 @@ export class Chats {
         // A process that ended (after an interrupt, say) is replaced by one that resumes the same session.
         resume: chat.sessionId || undefined,
         onEvent: event => {
+          // A chat replaced by New Claude Chat is silent.
+          if (chat.discarded) return;
           // The interrupted marker of an older process still counts.
           if (chat.session !== session && event.type !== 'interrupted') return;
           if (event.type === 'session') chat.sessionId = event.id;
@@ -161,7 +165,9 @@ export class Chats {
   reset(workspaceId: string): Promise<void> {
     const chat = this.chats.get(workspaceId);
     this.chats.delete(workspaceId);
-    if (!chat || !chat.session) return Promise.resolve();
+    if (!chat) return Promise.resolve();
+    chat.discarded = true;
+    if (!chat.session) return Promise.resolve();
     // Detach first, so late events of the old process never reach the new chat.
     const session = chat.session;
     chat.session = null;
