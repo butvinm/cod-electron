@@ -190,12 +190,14 @@ export function createClaudeProvider({ bin = process.env.COD_CLAUDE_BIN || 'clau
         if (!alive || interrupting) return;
         child.stdin.write(`${JSON.stringify({ type: 'control_request', request_id: crypto.randomUUID(), request: { subtype: 'set_permission_mode', mode } })}\n`);
       },
-      answerPermission(id, { allow, message }) {
+      answerPermission(id, { allow, message, answers }) {
         const entry = permissions.get(id);
         if (!entry) return;
         permissions.delete(id);
+        // AskUserQuestion: Claude reads the person's answers from updatedInput.answers.
+        const updatedInput = answers && entry.input && typeof entry.input === 'object' ? { ...entry.input, answers } : entry.input;
         entry.resolve(allow
-          ? { behavior: 'allow', updatedInput: entry.input }
+          ? { behavior: 'allow', updatedInput }
           : { behavior: 'deny', message: typeof message === 'string' && message ? message : 'The user denied this request.' });
       },
       interrupt() {

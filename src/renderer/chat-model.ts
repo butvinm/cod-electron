@@ -4,6 +4,7 @@
 // each change returns a new state and new objects for the items that changed.
 // Item kinds: user, assistant (state: streaming, complete, interrupted), tool, interrupted, error.
 import type { ChatEvent, PermissionMode } from '../shared/chat.ts';
+import type { Question } from './question-model.ts';
 
 export type ReplyState = 'streaming' | 'complete' | 'interrupted';
 
@@ -11,6 +12,7 @@ export type ChatItem =
   | { kind: 'user'; text: string; key: number }
   | { kind: 'assistant'; text: string; state: ReplyState; key: number }
   | { kind: 'tool'; toolId: string; name: string; input: unknown; output: string | null; isError: boolean; key: number }
+  | { kind: 'questions'; questions: Question[]; answers: Record<string, string>; key: number }
   | { kind: 'interrupted'; key: number }
   | { kind: 'error'; message: string; key: number };
 
@@ -38,7 +40,9 @@ export interface ChatState {
 export type ChatModelEvent =
   | ChatEvent
   | { type: 'user-message'; text: string }
-  | { type: 'permission-answered'; id: string };
+  | { type: 'permission-answered'; id: string }
+  // The person answered a question card: it leaves the queue and stays in the transcript.
+  | { type: 'questions-answered'; id: string; questions: Question[]; answers: Record<string, string> };
 
 export type TextBlock = { type: 'text' | 'code'; text: string };
 
@@ -109,6 +113,9 @@ export function reduce(state: ChatState, event: ChatModelEvent): ChatState {
     case 'permission-clear':
     case 'permission-answered':
       return withQueue(state, state.permissions.filter(request => request.id !== event.id));
+    case 'questions-answered':
+      return push(withQueue(state, state.permissions.filter(request => request.id !== event.id)),
+        { kind: 'questions', questions: event.questions, answers: event.answers });
     case 'turn-end':
       return { ...withQueue(settle(state, 'complete'), []), busy: false };
     case 'error': {
