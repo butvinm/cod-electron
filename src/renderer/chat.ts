@@ -53,8 +53,16 @@ export function create({ workspaceId, chatApi }: ChatOptions): ChatView {
   const handoffButton = node('button', { class: 'chat-handoff', type: 'button', text: 'Continue in Terminal' });
   const handoffCopied = node('span', { class: 'chat-handoff-copied', 'aria-live': 'polite' });
   let copiedTimer: ReturnType<typeof setTimeout> | undefined;
+  // While a handoff is under way another activation does nothing. The button stays enabled, so it keeps the focus.
+  let handingOff = false;
   handoffButton.addEventListener('click', () => {
-    chatApi.handoff(workspaceId).then(done => {
+    if (handingOff) return;
+    handingOff = true;
+    handoffButton.setAttribute('aria-busy', 'true');
+    chatApi.handoff(workspaceId).finally(() => {
+      handingOff = false;
+      handoffButton.removeAttribute('aria-busy');
+    }).then(done => {
       if (!done) return;
       handoffCopied.textContent = 'Copied';
       clearTimeout(copiedTimer);

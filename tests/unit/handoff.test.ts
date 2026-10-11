@@ -48,3 +48,26 @@ test('Chats.handoff gives the command, ends the idle process and the next send r
   assert.equal(fake.started[1].options.resume, 'sid');
   assert.equal(fake.started[1].options.cwd, '/proj/a');
 });
+
+test('Chats.handoff called twice quickly returns the command only after the process is gone', async () => {
+  let finish = () => {};
+  const fake = provider();
+  const start = fake.start.bind(fake);
+  fake.start = options => {
+    const session = start(options) as Fake;
+    session.close = () => new Promise<void>(resolve => { finish = () => { session.alive = false; resolve(); }; });
+    return session;
+  };
+  const chats = new Chats({ provider: fake, folders: { list: () => ['/proj/a'] }, emit: () => {}, home: '/home/me' });
+  chats.send('w1', 'hi');
+  fake.started[0].options.onEvent({ type: 'session', id: 'sid' });
+  fake.started[0].options.onEvent({ type: 'turn-end' });
+  const settled: string[] = [];
+  const first = chats.handoff('w1').then(value => { settled.push('first'); return value; });
+  const second = chats.handoff('w1').then(value => { settled.push('second'); return value; });
+  await new Promise(resolve => setTimeout(resolve, 10));
+  assert.deepEqual(settled, []);
+  finish();
+  const command = "cd '/proj/a' && claude --resume sid";
+  assert.deepEqual(await Promise.all([first, second]), [command, command]);
+});

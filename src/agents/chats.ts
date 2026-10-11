@@ -8,6 +8,8 @@ function permissionKey(event: { tool: string; input: unknown }): string {
 }
 
 interface Chat {
+  // The shutdown of a process ended by Continue in Terminal, while it is under way.
+  closing?: Promise<void> | null;
   session: AgentSession | null;
   sessionId: string | null;
   cwd: string | null;
@@ -187,8 +189,12 @@ export class Chats {
     if (!chat || chat.busy || !chat.sessionId) return Promise.resolve(null);
     const command = resumeCommand(chat.cwd ?? this._wanted(workspaceId), chat.sessionId);
     const session = chat.session;
-    chat.session = null;
-    return Promise.resolve(session ? session.close() : undefined).then(() => command);
+    if (session) {
+      chat.session = null;
+      // Overlapping handoffs all wait for the same shutdown.
+      chat.closing = Promise.resolve(session.close()).then(() => { chat.closing = null; });
+    }
+    return Promise.resolve(chat.closing).then(() => command);
   }
 
   interrupt(workspaceId: string): void {
