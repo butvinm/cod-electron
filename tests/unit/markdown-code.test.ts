@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { highlightRuns, languageName, shellRuns, decodeEntity, safeLink } from '../../src/renderer/markdown-code.ts';
+import { highlightRuns, languageName, shellRuns, decodeEntity, safeLink, joinCodeSegments, linkDestination } from '../../src/renderer/markdown-code.ts';
 
 const cut = (code: string, runs: { from: number; to: number; category: string }[]) => runs.map(run => `${run.category}:${code.slice(run.from, run.to)}`);
 
@@ -57,4 +57,17 @@ test('safeLink allows only http, https and mailto', () => {
   assert.equal(safeLink('javascript:alert(1)'), null);
   assert.equal(safeLink('file:///etc/passwd'), null);
   assert.equal(safeLink('not a url'), null);
+});
+
+test('joinCodeSegments keeps every line of a fence split by container prefixes', () => {
+  assert.equal(joinCodeSegments(['a\n', 'b']), 'a\nb');
+  assert.equal(joinCodeSegments(['a\n', '\n', 'c']), 'a\n\nc');
+  assert.equal(joinCodeSegments([]), '');
+});
+
+test('linkDestination decodes entities and backslash escapes once', () => {
+  assert.equal(linkDestination('https://example.invalid/?a=1&amp;b=2'), 'https://example.invalid/?a=1&b=2');
+  assert.equal(linkDestination('https://example.invalid/a\\_b'), 'https://example.invalid/a_b');
+  assert.equal(linkDestination('https://example.invalid/?x=&amp;amp;'), 'https://example.invalid/?x=&amp;');
+  assert.equal(linkDestination('https://example.invalid/a\\b'), 'https://example.invalid/a\\b');
 });

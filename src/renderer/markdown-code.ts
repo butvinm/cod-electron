@@ -143,6 +143,16 @@ export function decodeEntity(entity: string): string {
   return code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff) ? String.fromCodePoint(code) : entity;
 }
 
+// A fence inside a list or quote comes as one text segment per line, without the container prefixes.
+export function joinCodeSegments(segments: string[]): string {
+  return segments.map(segment => segment.replace(/\n$/, '')).join('\n');
+}
+
+// A link destination as written: entities and backslash escapes become the characters they stand for.
+export function linkDestination(raw: string): string {
+  return raw.replace(/\\([!-/:-@[-`{-~])|&(?:#\d{1,7}|#[xX][0-9a-fA-F]{1,6}|[A-Za-z]+);/g, (match, escaped: string | undefined) => escaped ?? decodeEntity(match));
+}
+
 // Only these links are handed to the system browser. Anything else shows as plain text.
 export function safeLink(url: string): string | null {
   try {

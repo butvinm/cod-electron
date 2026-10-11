@@ -2,7 +2,7 @@
 // every node here is created with createElement and createTextNode, and raw HTML in the
 // markdown stays visible as text. The parser is @lezer/markdown with the GitHub extensions.
 import { parser, GFM } from '@lezer/markdown';
-import { highlightRuns, languageName, decodeEntity, safeLink } from './markdown-code.ts';
+import { highlightRuns, languageName, decodeEntity, safeLink, joinCodeSegments, linkDestination } from './markdown-code.ts';
 
 const gfm = parser.configure(GFM);
 type SyntaxNode = ReturnType<typeof gfm.parse>['topNode'];
@@ -47,12 +47,44 @@ function text(src: string, node: SyntaxNode): Node[] {
   return [document.createTextNode(src.slice(node.from, node.to))];
 }
 
+const labelKey = (label: string): string => label.trim().replace(/\s+/g, ' ').toLowerCase();
+
+function destination(src: string, node: SyntaxNode): string {
+  const raw = src.slice(node.from, node.to);
+  return linkDestination(raw.startsWith('<') && raw.endsWith('>') ? raw.slice(1, -1) : raw);
+}
+
+// The link definitions ("[label]: url") of a document, by normalized label.
+export function referenceTargets(source: string): Map<string, string> {
+  const found = new Map<string, string>();
+  for (const node of children(gfm.parse(source).topNode)) {
+    if (node.name !== 'LinkReference') continue;
+    const kids = children(node);
+    const label = kids.find(kid => kid.name === 'LinkLabel');
+    const url = kids.find(kid => kid.name === 'URL');
+    const key = label ? labelKey(source.slice(label.from + 1, label.to - 1)) : '';
+    if (key && url && !found.has(key)) found.set(key, destination(source, url));
+  }
+  return found;
+}
+
+// The definitions of the reply being drawn. Set by renderMarkdown before anything is drawn.
+let references = new Map<string, string>();
+
 function link(src: string, node: SyntaxNode): Node[] {
   const kids = children(node);
   const marks = kids.filter(kid => kid.name === 'LinkMark');
+  if (marks.length < 2) return text(src, node);
   const url = kids.find(kid => kid.name === 'URL');
-  const href = url ? safeLink(src.slice(url.from, url.to)) : null;
-  if (marks.length < 2 || !url) return text(src, node);
+  let target: string | undefined;
+  if (url) target = destination(src, url);
+  else {
+    const reference = kids.find(kid => kid.name === 'LinkLabel');
+    const inner = reference ? src.slice(reference.from + 1, reference.to - 1) : '';
+    target = references.get(labelKey(inner || src.slice(marks[0].to, marks[1].from)));
+  }
+  if (target === undefined) return text(src, node);
+  const href = safeLink(target);
   const label = inline(src, node, marks[0].to, marks[1].from);
   if (!href) return label.length ? label : text(src, node);
   const anchor = el('a', ...(label.length ? label : [href]));
@@ -115,12 +147,23 @@ function codeBlock(language: string, code: string): HTMLElement {
   return block;
 }
 
-function fenced(src: string, node: SyntaxNode): Node[] {
+function fencedParts(src: string, node: SyntaxNode): { language: string; code: string } {
   const kids = children(node);
   const info = kids.find(kid => kid.name === 'CodeInfo');
-  const body = kids.find(kid => kid.name === 'CodeText');
-  const code = body ? src.slice(body.from, body.to) : '';
-  return [codeBlock(info ? languageName(src.slice(info.from, info.to)) : '', code ? `${code}\n` : '')];
+  const code = joinCodeSegments(kids.filter(kid => kid.name === 'CodeText').map(kid => src.slice(kid.from, kid.to)));
+  return { language: info ? languageName(src.slice(info.from, info.to)) : '', code: code ? `${code}\n` : '' };
+}
+
+// The language and text of every fenced code block in a document, however deeply nested.
+export function fencedCode(source: string): { language: string; code: string }[] {
+  const found: { language: string; code: string }[] = [];
+  gfm.parse(source).iterate({ enter: node => { if (node.name === 'FencedCode') found.push(fencedParts(source, node.node)); } });
+  return found;
+}
+
+function fenced(src: string, node: SyntaxNode): Node[] {
+  const { language, code } = fencedParts(src, node);
+  return [codeBlock(language, code)];
 }
 
 function indented(src: string, node: SyntaxNode): Node[] {
@@ -188,5 +231,6 @@ function blockNode(src: string, node: SyntaxNode): Node[] {
 // The nodes for a whole reply. The same text always gives the same nodes, which is what makes
 // the last streamed render equal the render of the complete text.
 export function renderMarkdown(source: string): Node[] {
+  references = referenceTargets(source);
   return blocks(source, gfm.parse(source).topNode);
 }
