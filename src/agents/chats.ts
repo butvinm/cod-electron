@@ -21,6 +21,8 @@ interface Chat {
   allowed: Set<string>;
   // Request id -> key of a request on screen.
   asked: Map<string, string>;
+  // The folder of an opened CLI session. It stays the working folder of this chat.
+  fixedCwd: string | null;
 }
 
 export interface ChatsOptions {
@@ -68,6 +70,8 @@ export class Chats {
 
   // First folder of the workspace, else the settings' default folder, else home.
   _choice(workspaceId: string): { cwd: string; notice: string | null } {
+    const fixed = this.chats.get(workspaceId)?.fixedCwd;
+    if (fixed) return { cwd: fixed, notice: null };
     const first = this.folders.list(workspaceId)[0];
     if (first) return { cwd: first, notice: null };
     const { folder, notice } = this.defaultFolder();
@@ -90,7 +94,7 @@ export class Chats {
   _chat(workspaceId: string): Chat {
     let chat = this.chats.get(workspaceId);
     if (!chat) {
-      chat = { session: null, sessionId: null, cwd: null, busy: false, mode: this.defaultMode(), discarded: false, allowed: new Set(), asked: new Map() };
+      chat = { session: null, sessionId: null, cwd: null, busy: false, mode: this.defaultMode(), discarded: false, allowed: new Set(), asked: new Map(), fixedCwd: null };
       this.chats.set(workspaceId, chat);
     }
     return chat;
@@ -215,6 +219,23 @@ export class Chats {
     chat.busy = false;
     chat.asked.clear();
     return Promise.resolve(session.close());
+  }
+
+  // The folders whose stored Claude sessions the workspace lists: its own, else the one the chat would run in.
+  sessionFolders(workspaceId: string): string[] {
+    const own = this.folders.list(workspaceId);
+    if (own.length > 0) return own;
+    const { folder } = this.defaultFolder();
+    return [folder || this.home];
+  }
+
+  // Opening a CLI session: the chat is replaced, as New Claude Chat does, and the next message
+  // resumes that session in the folder it was made in. Nothing is started here.
+  async open(workspaceId: string, sessionId: string, folder: string): Promise<void> {
+    await this.reset(workspaceId);
+    const chat = this._chat(workspaceId);
+    chat.sessionId = sessionId;
+    chat.fixedCwd = folder;
   }
 
   forget(workspaceId: string): Promise<void> {

@@ -1,7 +1,7 @@
 // The contract between the main process, the preload script and the page.
 // Every IPC channel name and payload type lives here, and all three sides import it,
 // so a change to a channel is a compile error wherever it is not followed.
-import type { ChatEvent, ChatInfo, PermissionAnswer, PermissionMode } from './chat.ts';
+import type { ChatEvent, ChatInfo, OpenedSession, PermissionAnswer, PermissionMode, SessionSummary } from './chat.ts';
 
 export type Eol = 'lf' | 'crlf' | 'cr';
 
@@ -49,6 +49,7 @@ export type Action =
   | 'open-folder'
   | 'open-recent'
   | 'new-chat'
+  | 'session-history'
   | 'add-folder'
   | 'recent-1'
   | 'recent-2'
@@ -78,6 +79,9 @@ export interface InvokeChannels {
   'chat:open-link': { args: [url: string]; result: void };
   // Copies the terminal command to the clipboard and ends the idle process. False when it cannot be done now.
   'chat:handoff': { args: [workspaceId: string]; result: boolean };
+  'chat:sessions': { args: [workspaceId: string]; result: SessionSummary[] };
+  // Replaces the chat with a stored CLI session of the workspace's folders. Null when it is not there.
+  'chat:open-session': { args: [workspaceId: string, sessionId: string]; result: OpenedSession | null };
   'editor:read': { args: [workspaceId: string, file: string]; result: FileContents };
   'editor:write': { args: [workspaceId: string, file: string, contents: FileContents]; result: void };
 }
@@ -122,6 +126,9 @@ export interface CodApi {
     openLink(url: string): Promise<void>;
     // Continue in Terminal: copies `cd '<folder>' && claude --resume <id>` and ends the idle process. Resolves false when a turn runs.
     handoff(workspaceId: string): Promise<boolean>;
+    // The Claude CLI sessions stored for the workspace's folders, newest first.
+    sessions(workspaceId: string): Promise<SessionSummary[]>;
+    openSession(workspaceId: string, sessionId: string): Promise<OpenedSession | null>;
     permission(workspaceId: string, id: string, answer: PermissionAnswer): Promise<void>;
     onEvent(callback: (workspaceId: string, event: ChatEvent) => void): void;
   };
