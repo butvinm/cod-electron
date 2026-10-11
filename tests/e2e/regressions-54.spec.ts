@@ -110,10 +110,13 @@ test('AC1: reopening A through Open Recent makes A first and Cmd-1 opens A', asy
   await expect(recent).toHaveCount(2);
   await expect(recent.first(), 'AC1: reopening an existing root must refresh its recent position').toHaveAttribute('data-path', a);
   await expect(recent.last()).toHaveAttribute('data-path', b);
+  const emptyWorkspace = await page.getByRole('tab', { selected: true }).getAttribute('data-workspace-id');
+  await expect(roots(page)).toHaveCount(0);
   await page.keyboard.press(`${modifier}+1`);
-  await expect(start).toBeHidden();
   await expect(roots(page)).toHaveCount(1);
   await expect(roots(page)).toHaveAttribute('data-path', a);
+  await expect(roots(page)).toBeVisible();
+  await expect(page.getByRole('tab', { selected: true })).toHaveAttribute('data-workspace-id', emptyWorkspace!);
 });
 
 test('AC2: a reference defined inside a blockquote opens in the system browser', async ({ cod: { app, page } }) => {
@@ -142,7 +145,8 @@ test('AC3: a fenced code block with one blank body line shows exactly one empty 
   await expect(reply).toHaveAttribute('data-state', 'complete');
   const code = reply.locator('pre > code');
   await expect(code).toHaveCount(1);
-  await expect(code).toBeVisible();
+  // A blank inline code element can have zero width. Its pre paints the code body.
+  await expect(reply.locator('pre')).toBeVisible();
   expect(await code.textContent(), 'AC3: preserve one blank line without appending a second newline').toBe('\n');
   const lines = await code.evaluate(element => {
     const pre = element.parentElement!;
