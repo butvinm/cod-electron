@@ -39,6 +39,12 @@ No additional data-testid or test-only application API is requested.
 Every openable file path has accessible role=link and its displayed path, including any line/column suffix, as its exact accessible name.
 Tool links are visible in the tool row without expanding the details.
 They must support click, normal Tab and Shift+Tab focus, and Enter activation.
+AC4 starts with focus inside the Conversation log, using its first focusable button or link for Tab and its last for Shift+Tab.
+It visits the tool and reply targets in transcript order for Tab and reverse order for Shift+Tab.
+After Enter opens and focuses the editor, it restores focus to the previous transcript link before navigating to the next target.
+Focus must remain inside the history while reaching each target.
+The PM revised AC4 to start in the history because Shift+Tab in the composer cycles permission mode (#33) and Tab in the editor indents, matching Zed.
+A keyboard path from the composer into the history is separate story #64.
 Avoid nesting the path link inside the tool summary button; the summary must remain independently expandable.
 Inline-code paths retain their code presentation inside the link.
 Missing files and existing files outside the allowed roots remain text without link role.
@@ -60,7 +66,7 @@ Small fixtures keep all 20 lines rendered so direct DOM child order corresponds 
 | AC1 | Click Read, Edit, MultiEdit and Write paths; verify absolute active editor paths; verify Edit line 7 and MultiEdit line 4 |
 | AC2 | Each of src/a.ts, src/a.ts:12 and src/a.ts:12:5 has two links, one plain and one inline code; click all six, checking line/column where present, including reopening an already open tab |
 | AC3 | Existing src/a.ts is a positive control; missing paths in bare, line and line/column forms remain text; an existing absolute outside file, its inline-code position form and ../outside.ts remain text; no editor tab opens |
-| AC4 | All four tool links and both plain/inline position links can be reached from the composer with both Tab and Shift+Tab; Enter opens the same file and coordinates as click |
+| AC4 | Starting in chat history, all four tool links and both plain/inline position links are reached in order with Tab and in reverse order with Shift+Tab; Enter opens the same file and coordinates as click; focus returns to history before the next target |
 | AC5 | The chat's working folder wins a three-root same-path collision; the next root wins a fallback collision in roots two and three; a path only in the last root opens; an absolute path inside the last root opens at its coordinates |
 
 The current chat working folder is the first workspace folder, as defined in src/agents/chats.ts.

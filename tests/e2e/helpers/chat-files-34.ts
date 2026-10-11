@@ -148,9 +148,20 @@ export async function expectOpen(page: Page, file: string, line?: number, column
   }
 }
 
-export async function tabTo(page: Page, link: Locator, direction: 'Tab' | 'Shift+Tab') {
+export async function tabTo(page: Page, link: Locator, direction: 'Tab' | 'Shift+Tab', from: Locator) {
+  const history = chat(page).getByRole('log', { name: 'Conversation' });
+  // Enter focuses the editor. Restore the transcript boundary or previous link
+  // before continuing in order, without passing through the composer.
+  await from.focus();
+  await expect(from).toBeFocused();
+  await expect.poll(() => history.evaluate(element => element.contains(document.activeElement)), {
+    message: 'Story #34 keyboard navigation must start in the chat history',
+  }).toBe(true);
   for (let i = 0; i < 80; i++) {
     await page.keyboard.press(direction);
+    await expect.poll(() => history.evaluate(element => element.contains(document.activeElement)), {
+      message: `Story #34 file links must be reachable in order with ${direction} within the chat history`,
+    }).toBe(true);
     if (await link.evaluate(element => element === document.activeElement)) return;
   }
   await expect(link, `Story #34 file link must be reachable with ${direction}`).toBeFocused();

@@ -1,4 +1,4 @@
-import { test, toolNames, chat, composer, reply, prepare, expectOpen, tabTo } from './helpers/chat-files-34';
+import { test, toolNames, chat, reply, prepare, expectOpen, tabTo } from './helpers/chat-files-34';
 import { expect } from './helpers/electron';
 import path from 'node:path';
 
@@ -39,7 +39,7 @@ test('AC3: missing and outside-folder paths remain text while existing file ment
   await expect(page.getByTestId('editor-tab')).toHaveCount(0);
 });
 
-test('AC4: Tab and Shift+Tab reach tool and reply file links and Enter opens their targets', async ({ cod: { page }, files }) => {
+test('AC4: from chat history, Tab and Shift+Tab reach file links in order and Enter opens their targets', async ({ cod: { page }, files }) => {
   await prepare(page, files);
   const targets = [
     ...['read', 'edit', 'multi', 'write'].map((name, i) => ({
@@ -49,13 +49,17 @@ test('AC4: Tab and Shift+Tab reach tool and reply file links and Enter opens the
     ...[0, 1].map(i => ({ link: reply(page).getByRole('link', { name: 'src/a.ts:12:5', exact: true }).nth(i),
       file: path.join(files.folders[0], 'src/a.ts'), line: 12, column: 5 })),
   ];
+  const history = chat(page).getByRole('log', { name: 'Conversation' });
+  const historyControls = history.getByRole('button').or(history.getByRole('link'));
   for (const direction of ['Tab', 'Shift+Tab'] as const) {
-    for (const target of targets) {
+    const orderedTargets = direction === 'Tab' ? targets : [...targets].reverse();
+    let from = direction === 'Tab' ? historyControls.first() : historyControls.last();
+    for (const target of orderedTargets) {
       await expect(target.link, 'Story #34 file links must exist before exercising keyboard navigation').toBeVisible();
-      await composer(page).focus();
-      await tabTo(page, target.link, direction);
+      await tabTo(page, target.link, direction, from);
       await page.keyboard.press('Enter');
       await expectOpen(page, target.file, target.line, target.column);
+      from = target.link;
     }
   }
 });
