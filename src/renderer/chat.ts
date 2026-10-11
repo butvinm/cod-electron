@@ -2,7 +2,12 @@
 // draft and the focus survive the workbench redraws. Each event updates only the part it changes.
 // The Claude process lives in the main process; this file only draws events and sends keys.
 import type { CodApi } from '../shared/ipc.ts';
-import { createChat, reduce, toolTarget, toolInputText, splitBlocks, statusOf, permissionText, queueHint, promptFocusTarget, type ChatItem, type ChatModelEvent, type PermissionRequest } from './chat-model.ts';
+import { createChat, reduce, toolTarget, toolInputText, statusOf, permissionText, queueHint, promptFocusTarget, type ChatItem, type ChatModelEvent, type PermissionRequest } from './chat-model.ts';
+import { renderMarkdown } from './markdown.ts';
+import { createModeSelector } from './chat-mode.ts';
+import { nextPermissionMode, type PermissionMode } from '../shared/chat.ts';
+import { createQuestionForm, type QuestionForm } from './chat-question.ts';
+import { parseQuestions, DECLINED, QUESTION_TOOL, type Question } from './question-model.ts';
 
 type ToolItem = Extract<ChatItem, { kind: 'tool' }>;
 
@@ -46,8 +51,12 @@ export function create({ workspaceId, chatApi }: ChatOptions): ChatView {
   session.hidden = true;
   const status = node('span', { class: 'chat-status', testid: 'chat-session-status', 'aria-live': 'polite', text: 'Ready' });
   const header = node('div', { class: 'chat-header' }, directory, session, status);
+  const folderNotice = node('div', { class: 'chat-folder-notice', testid: 'chat-folder-notice', role: 'status' });
+  folderNotice.hidden = true;
   const promptBox = node('div', { class: 'chat-permission', testid: 'chat-permission-prompt', role: 'group', 'aria-label': 'Permission request' });
   promptBox.hidden = true;
+  const questionBox = node('div', { class: 'chat-question-box' });
+  questionBox.hidden = true;
   const transcript = node('div', { class: 'chat-transcript', role: 'log', 'aria-label': 'Conversation' });
   const composer = node('textarea', {
     class: 'chat-composer',
@@ -56,8 +65,14 @@ export function create({ workspaceId, chatApi }: ChatOptions): ChatView {
     rows: '1',
     spellcheck: 'false',
   });
+  // Set a mode: shown at once, then sent on. The main process answers events only for modes Claude reports itself.
+  const modeSelector = createModeSelector(chooseMode);
+  function chooseMode(mode: PermissionMode): void {
+    apply({ type: 'mode', mode });
+    chatApi.setMode(workspaceId, mode).catch(console.error);
+  }
   const element = node('div', { class: 'claude-chat', testid: 'claude-chat', 'data-workspace-id': workspaceId },
-    header, transcript, promptBox, node('div', { class: 'chat-input' }, composer));
+    header, folderNotice, transcript, promptBox, questionBox, node('div', { class: 'chat-input', testid: 'chat-composer-area' }, composer, modeSelector.element));
 
   function growComposer(): void {
     // Set through the CSSOM, because the CSP blocks inline style attributes.
@@ -70,14 +85,25 @@ export function create({ workspaceId, chatApi }: ChatOptions): ChatView {
       directory.textContent = info.home
         ? `Working in your home folder: ${info.cwd}`
         : `Working in ${info.cwd}`;
+      folderNotice.textContent = info.notice ?? '';
+      folderNotice.hidden = !info.notice;
     }).catch(console.error);
   }
 
   function drawText(container: HTMLElement, text: string): void {
-    container.replaceChildren(...splitBlocks(text).map(block => (block.type === 'code'
-      ? node('pre', { class: 'chat-code', text: block.text })
-      : node('p', { class: 'chat-paragraph', text: block.text.replace(/^\n+|\n+$/g, '') }))));
+    container.replaceChildren(...renderMarkdown(text));
   }
+
+  // Links in replies go to the system browser. The window itself never navigates.
+  function openLink(event: Event): void {
+    const anchor = event.target instanceof Element ? event.target.closest('a') : null;
+    if (!anchor || !transcript.contains(anchor)) return;
+    event.preventDefault();
+    const href = anchor.getAttribute('href');
+    if (href && event.type === 'click') chatApi.openLink(href).catch(console.error);
+  }
+  transcript.addEventListener('click', openLink);
+  transcript.addEventListener('auxclick', openLink);
 
   function buildTool(item: ToolItem): HTMLElement {
     const summary = node('button', { class: 'chat-tool-summary', type: 'button', 'aria-expanded': 'false' },
@@ -115,11 +141,33 @@ export function create({ workspaceId, chatApi }: ChatOptions): ChatView {
     body.replaceChildren(...kids);
   }
 
+  // A submitted question card: each question with its answer; the button opens the options too.
+  function buildQuestions(item: Extract<ChatItem, { kind: 'questions' }>): HTMLElement {
+    const toggle = node('button', { class: 'chat-tool-summary', type: 'button', 'aria-expanded': 'false' },
+      node('span', { class: 'chat-tool-chevron', 'aria-hidden': 'true' }), node('span', { class: 'chat-tool-name', text: 'Questions and answers' }));
+    const rows = item.questions.map(question => {
+      const detail = node('div', { class: 'chat-question-detail' }, ...question.options.map(option =>
+        node('div', { text: `${option.label}: ${option.description}` })));
+      detail.hidden = true;
+      return node('div', { class: 'chat-question-answer', testid: 'chat-question-answer' },
+        node('span', { class: 'chat-question-asked', text: question.question }), ' ',
+        node('span', { class: 'chat-question-given', text: item.answers[question.question] ?? '' }), detail);
+    });
+    const block = node('div', { class: 'chat-tool chat-question-history', testid: 'chat-question-history' }, toggle, ...rows);
+    toggle.addEventListener('click', () => {
+      const open = toggle.getAttribute('aria-expanded') !== 'true';
+      toggle.setAttribute('aria-expanded', String(open));
+      block.querySelectorAll<HTMLElement>('.chat-question-detail').forEach(detail => { detail.hidden = !open; });
+    });
+    return block;
+  }
+
   function build(item: ChatItem): HTMLElement {
     switch (item.kind) {
       case 'user': return node('div', { class: 'chat-user', testid: 'chat-user-message', text: item.text });
       case 'assistant': return node('div', { class: 'chat-assistant', testid: 'chat-assistant-message' });
       case 'tool': return buildTool(item);
+      case 'questions': return buildQuestions(item);
       case 'interrupted': return node('div', { class: 'chat-note', testid: 'chat-interrupted', text: 'Interrupted by you' });
       default: return node('div', { class: 'chat-error', testid: 'chat-error', role: 'alert', text: item.message });
     }
@@ -141,6 +189,7 @@ export function create({ workspaceId, chatApi }: ChatOptions): ChatView {
   let reasonBox!: HTMLElement;
   let reasonInput!: HTMLInputElement;
 
+  let questionForm: QuestionForm | null = null;
   let lastChoice = 0;
   let countHint!: HTMLElement;
 
@@ -161,6 +210,7 @@ export function create({ workspaceId, chatApi }: ChatOptions): ChatView {
   // Moves the focus to the prompt's current choice, or to the denial form when it is open.
   function focusPrompt(): boolean {
     if (!state.permission || shownId === null) return false;
+    if (questionForm) { questionForm.focusCurrent(); return true; }
     const target = promptFocusTarget({ denying, choice: lastChoice, count: choices.length });
     (target.kind === 'reason' ? reasonInput : choices[target.index]).focus();
     return true;
@@ -192,33 +242,68 @@ export function create({ workspaceId, chatApi }: ChatOptions): ChatView {
       choiceBox, reasonBox, hint);
   }
 
+  // Claude's questions replace the permission prompt for AskUserQuestion.
+  function buildQuestionCard(id: string, questions: Question[]): QuestionForm {
+    const form = createQuestionForm(questions, answers => {
+      chatApi.permission(workspaceId, id, { allow: true, scope: 'once', answers }).catch(console.error);
+      apply({ type: 'questions-answered', id, questions, answers });
+    });
+    questionForm = form;
+    questionBox.replaceChildren(form.element);
+    return form;
+  }
+
+  function decline(): void {
+    const id = shownId;
+    if (id === null) return;
+    chatApi.permission(workspaceId, id, { allow: false, scope: 'once', message: DECLINED }).catch(console.error);
+    apply({ type: 'permission-answered', id });
+  }
+
   function drawPrompt(): void {
     const request = state.permission;
     if (!request) {
       if (shownId === null) return;
-      const hadFocus = promptBox.contains(document.activeElement);
+      const hadFocus = promptBox.contains(document.activeElement) || questionBox.contains(document.activeElement);
       shownId = null;
+      questionForm = null;
       promptBox.hidden = true;
       promptBox.replaceChildren();
+      questionBox.hidden = true;
+      questionBox.replaceChildren();
       if (hadFocus) composer.focus();
       return;
     }
     if (shownId === request.id) {
-      countHint.textContent = queueHint(state.permissions.length);
+      if (!questionForm) countHint.textContent = queueHint(state.permissions.length);
       return;
     }
     shownId = request.id;
-    buildPrompt(request);
-    countHint.textContent = queueHint(state.permissions.length);
-    promptBox.hidden = false;
+    const questions = request.tool === QUESTION_TOOL ? parseQuestions(request.input) : null;
+    let opened: QuestionForm | null = null;
+    questionForm = null;
+    if (questions) {
+      promptBox.hidden = true;
+      promptBox.replaceChildren();
+      opened = buildQuestionCard(request.id, questions);
+      questionBox.hidden = false;
+    } else {
+      questionBox.hidden = true;
+      questionBox.replaceChildren();
+      buildPrompt(request);
+      countHint.textContent = queueHint(state.permissions.length);
+      promptBox.hidden = false;
+    }
     // A prompt takes the focus unless the person is working somewhere else.
     const active = document.activeElement;
-    if (!active || active === document.body || element.contains(active)) choices[0].focus();
+    if (!active || active === document.body || element.contains(active)) {
+      if (opened) opened.focusFirst(); else choices[0].focus();
+    }
   }
 
   // Focus entering the chat (composer, pane) while a prompt waits goes to the prompt, so Enter never reaches the busy composer.
   element.addEventListener('focusin', event => {
-    if (state.permission && !(event.target instanceof Node && promptBox.contains(event.target))) focusPrompt();
+    if (state.permission && !(event.target instanceof Node && (promptBox.contains(event.target) || questionBox.contains(event.target)))) focusPrompt();
   });
 
   promptBox.addEventListener('keydown', event => {
@@ -261,6 +346,7 @@ export function create({ workspaceId, chatApi }: ChatOptions): ChatView {
     }
     element.classList.toggle('chat-busy', state.busy);
     status.textContent = statusOf(state);
+    modeSelector.show(state.mode);
     drawPrompt();
     if (nearBottom) transcript.scrollTop = transcript.scrollHeight;
   }
@@ -287,6 +373,12 @@ export function create({ workspaceId, chatApi }: ChatOptions): ChatView {
   }
 
   composer.addEventListener('keydown', event => {
+    // Shift+Tab cycles the permission mode, as in Claude Code. The focus and the draft stay.
+    if (event.key === 'Tab' && event.shiftKey && !event.isComposing && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      event.preventDefault();
+      chooseMode(nextPermissionMode(state.mode));
+      return;
+    }
     if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
     event.preventDefault();
     submit();
@@ -296,7 +388,7 @@ export function create({ workspaceId, chatApi }: ChatOptions): ChatView {
   function interrupt(): boolean {
     // An open prompt takes Esc first: Esc denies, and Esc in the denial form goes back to the choices.
     if (state.permission) {
-      showDenial(!denying);
+      if (questionForm) decline(); else showDenial(!denying);
       return true;
     }
     if (!state.busy) return false;
@@ -305,5 +397,6 @@ export function create({ workspaceId, chatApi }: ChatOptions): ChatView {
   }
 
   refreshInfo();
+  chatApi.mode(workspaceId).then(mode => apply({ type: 'mode', mode })).catch(console.error);
   return { element, apply, refreshInfo, interrupt, hasPermission: () => state.permission !== null, focusPrompt, isBusy: () => state.busy, composer };
 }

@@ -3,6 +3,7 @@
 // produce the same events.
 //   error kind is 'not-logged-in' or 'failed' here; the provider adds 'missing'.
 import type { ChatEvent } from '../shared/chat.ts';
+import { modeFromName } from './claude-settings.ts';
 
 export const LOGIN_PATTERN = /not logged in|auth login|\/login|authentication|invalid api key|unauthorized|credentials/i;
 
@@ -27,6 +28,7 @@ interface RawStreamEvent {
 interface RawLine {
   type?: string;
   subtype?: string;
+  permissionMode?: unknown;
   session_id?: unknown;
   parent_tool_use_id?: unknown;
   event?: RawStreamEvent;
@@ -63,6 +65,12 @@ export function createParser(): Parser {
     if (raw.parent_tool_use_id) return [];
     if (raw.type === 'system' && raw.subtype === 'init' && typeof raw.session_id === 'string') {
       return [{ type: 'session', id: raw.session_id }];
+    }
+    // The process reports a mode of its own, for example after leaving plan mode.
+    // The init line is not followed: it can predate a change the person just made.
+    if (raw.type === 'system' && raw.subtype === 'status') {
+      const mode = modeFromName(raw.permissionMode);
+      return mode ? [{ type: 'mode', mode }] : [];
     }
     if (raw.type === 'stream_event' && raw.event) {
       const event = raw.event;

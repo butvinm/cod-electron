@@ -17,7 +17,7 @@ if (!(argv.includes('-p') || argv.includes('--print')) || !argv.includes('--verb
   console.error('Expected print mode, --verbose and --include-partial-messages'); process.exit(2);
 }
 const scenario = JSON.parse(fs.readFileSync(path.join(__dirname, 'scenarios', `${process.env.COD_FAKE_CLAUDE_SCENARIO || 'reply'}.json`), 'utf8'));
-const session = argv.includes('--resume') ? option('--resume') : argv.includes('--session-id') ? option('--session-id') : '550e8400-e29b-41d4-a716-446655440008';
+const session = argv.includes('--resume') ? option('--resume') : argv.includes('--session-id') ? option('--session-id') : process.env.COD_FAKE_CLAUDE_UNIQUE_SESSIONS === '1' ? randomUUID() : '550e8400-e29b-41d4-a716-446655440008';
 if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(session)) { console.error('Invalid session UUID'); process.exit(2); }
 const stateFile = `${logFile}.${session}.session.json`;
 if (argv.includes('--resume') && !fs.existsSync(stateFile)) { console.error('Unknown session'); process.exit(1); }
