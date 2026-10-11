@@ -1,7 +1,7 @@
 // The contract between the main process, the preload script and the page.
 // Every IPC channel name and payload type lives here, and all three sides import it,
 // so a change to a channel is a compile error wherever it is not followed.
-import type { ChatEvent, ChatInfo, PermissionAnswer } from './chat.ts';
+import type { ChatEvent, ChatInfo, PermissionAnswer, PermissionMode } from './chat.ts';
 
 export type Eol = 'lf' | 'crlf' | 'cr';
 
@@ -72,6 +72,8 @@ export interface InvokeChannels {
   'chat:send': { args: [workspaceId: string, text: string]; result: void };
   'chat:permission': { args: [workspaceId: string, id: string, answer: PermissionAnswer]; result: void };
   'chat:interrupt': { args: [workspaceId: string]; result: void };
+  'chat:mode': { args: [workspaceId: string]; result: PermissionMode };
+  'chat:set-mode': { args: [workspaceId: string, mode: PermissionMode]; result: void };
   'chat:open-link': { args: [url: string]; result: void };
   'editor:read': { args: [workspaceId: string, file: string]; result: FileContents };
   'editor:write': { args: [workspaceId: string, file: string, contents: FileContents]; result: void };
@@ -110,6 +112,8 @@ export interface CodApi {
     info(workspaceId: string): Promise<ChatInfo>;
     send(workspaceId: string, text: string): Promise<void>;
     interrupt(workspaceId: string): Promise<void>;
+    mode(workspaceId: string): Promise<PermissionMode>;
+    setMode(workspaceId: string, mode: PermissionMode): Promise<void>;
     // Opens an http, https or mailto link from a reply in the system browser.
     openLink(url: string): Promise<void>;
     permission(workspaceId: string, id: string, answer: PermissionAnswer): Promise<void>;

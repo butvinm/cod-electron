@@ -62,9 +62,10 @@ export function createClaudeProvider({ bin = process.env.COD_CLAUDE_BIN || 'clau
   // Permission requests arrive through a small local MCP server (see permission-host.ts).
   const host = createPermissionHost();
 
-  function start({ cwd, resume, onEvent, onExit }: StartOptions): ClaudeSession {
+  function start({ cwd, resume, permissionMode, onEvent, onExit }: StartOptions): ClaudeSession {
     const args = [...STREAMING_FLAGS];
     if (resume) args.push('--resume', resume);
+    if (permissionMode) args.push('--permission-mode', permissionMode);
     const permissions = new Map<string, { input: unknown; resolve: (reply: PermissionReply) => void }>();
     const registration = host.register((request, signal) => new Promise<PermissionReply>(resolve => {
       if (!alive || quiet) { resolve({ behavior: 'deny', message: 'Cod is not taking requests right now.' }); return; }
@@ -176,6 +177,11 @@ export function createClaudeProvider({ bin = process.env.COD_CLAUDE_BIN || 'clau
         if (!alive || interrupting) return;
         turnActive = true;
         child.stdin.write(`${JSON.stringify({ type: 'user', message: { role: 'user', content: text } })}\n`);
+      },
+      // A control request on the same stdin: the process switches mode and keeps running.
+      setPermissionMode(mode) {
+        if (!alive || interrupting) return;
+        child.stdin.write(`${JSON.stringify({ type: 'control_request', request_id: crypto.randomUUID(), request: { subtype: 'set_permission_mode', mode } })}\n`);
       },
       answerPermission(id, { allow, message }) {
         const entry = permissions.get(id);

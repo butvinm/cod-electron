@@ -8,6 +8,8 @@ import { FileIndex } from './file-index.ts';
 import { EditorFiles } from './editor-files.ts';
 import { createClaudeProvider } from './agents/claude.ts';
 import { Chats } from './agents/chats.ts';
+import { readDefaultMode } from './agents/claude-settings.ts';
+import { isPermissionMode } from './shared/chat.ts';
 import { createQuitGuard } from './agents/quit-guard.ts';
 import { createQuitFlow } from './quit-flow.ts';
 import type { EventChannels, InvokeArgs, InvokeChannel, InvokeResult, SendChannels } from './shared/ipc.ts';
@@ -72,6 +74,7 @@ const chats = new Chats({
   provider: claude,
   folders: { list: id => folders.list(id) },
   emit: (workspaceId, event) => sendToPage('chat:event', { workspaceId, event }),
+  defaultMode: () => readDefaultMode(process.env),
 });
 
 folders.on('change', payload => {
@@ -133,6 +136,11 @@ handle('chat:permission', (workspaceId, id, answer) => {
   chats.answerPermission(String(workspaceId), id, { allow: answer.allow, message, scope: answer.scope === 'session' ? 'session' : 'once' });
 });
 handle('chat:interrupt', workspaceId => { chats.interrupt(String(workspaceId)); });
+handle('chat:mode', workspaceId => chats.mode(String(workspaceId)));
+handle('chat:set-mode', (workspaceId, mode) => {
+  if (!isPermissionMode(mode)) throw new Error('Unknown permission mode');
+  chats.setMode(String(workspaceId), mode);
+});
 
 // Links in chat replies. Only http, https and mailto go to the system browser.
 // With COD_TEST_RECORD_EXTERNAL_URLS=1 the URL is recorded instead of opened, for tests.

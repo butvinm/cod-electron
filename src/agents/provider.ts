@@ -1,4 +1,4 @@
-import type { ChatEvent } from '../shared/chat.ts';
+import type { ChatEvent, PermissionMode } from '../shared/chat.ts';
 
 // The provider interface, which a Codex provider would also implement.
 // Events are the chat events of src/shared/chat.ts. Only plain data crosses this interface,
@@ -10,6 +10,9 @@ export interface AgentSession {
   interrupt(): void;
   // Replies to a 'permission-request' event. Claude waits until this is called.
   answerPermission(id: string, answer: { allow: boolean; message?: string }): void;
+  // Tells the running process to use another permission mode. It is not restarted.
+  // A provider without modes can leave it out.
+  setPermissionMode?(mode: PermissionMode): void;
   // Stops the process without a visible event. The promise resolves once it and everything it started is gone.
   close(): Promise<void> | void;
   // True until the process has exited.
@@ -21,6 +24,8 @@ export interface AgentSession {
 export interface StartOptions {
   cwd: string;
   resume?: string;
+  // The permission mode the process starts in.
+  permissionMode?: PermissionMode;
   onEvent: (event: ChatEvent) => void;
   onExit: () => void;
 }

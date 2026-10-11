@@ -97,6 +97,8 @@ const cod: CodApi = {
     info: workspaceId => invoke('chat:info', workspaceId),
     send: (workspaceId, text) => invoke('chat:send', workspaceId, text),
     interrupt: workspaceId => invoke('chat:interrupt', workspaceId),
+    mode: workspaceId => invoke('chat:mode', workspaceId),
+    setMode: (workspaceId, mode) => invoke('chat:set-mode', workspaceId, mode),
     openLink: url => invoke('chat:open-link', url),
     permission: (workspaceId, id, answer) => invoke('chat:permission', workspaceId, id, answer),
     onEvent(callback) {
