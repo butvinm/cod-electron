@@ -3,7 +3,7 @@
 // A transcript is { items, busy, sessionId, ... }. Items are never changed in place:
 // each change returns a new state and new objects for the items that changed.
 // Item kinds: user, assistant (state: streaming, complete, interrupted), tool, interrupted, error.
-import type { ChatEvent } from '../shared/chat.ts';
+import type { ChatEvent, PermissionMode } from '../shared/chat.ts';
 import type { Question } from './question-model.ts';
 
 export type ReplyState = 'streaming' | 'complete' | 'interrupted';
@@ -31,6 +31,8 @@ export interface ChatState {
   // The first waiting request, or null.
   permission: PermissionRequest | null;
   permissions: PermissionRequest[];
+  // The permission mode shown in the composer.
+  mode: PermissionMode;
   nextKey: number;
 }
 
@@ -45,7 +47,7 @@ export type ChatModelEvent =
 export type TextBlock = { type: 'text' | 'code'; text: string };
 
 export function createChat(): ChatState {
-  return { items: [], busy: false, sessionId: null, permission: null, permissions: [], nextKey: 1 };
+  return { items: [], busy: false, sessionId: null, permission: null, permissions: [], mode: 'manual', nextKey: 1 };
 }
 
 // permission is always the first waiting request, or null.
@@ -81,6 +83,8 @@ export function reduce(state: ChatState, event: ChatModelEvent): ChatState {
   switch (event.type) {
     case 'user-message':
       return push(state, { kind: 'user', text: event.text }, { busy: true });
+    case 'mode':
+      return state.mode === event.mode ? state : { ...state, mode: event.mode };
     case 'session':
       return state.sessionId === event.id ? state : { ...state, sessionId: event.id };
     case 'text': {

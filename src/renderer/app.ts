@@ -408,6 +408,8 @@ void refreshRecents();
 // finder (Esc only closes them), then the chat interrupt.
 window.addEventListener('keydown', event => {
   if (event.key !== 'Escape' || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+  // An open permission mode menu takes Esc first: it closes and nothing else happens.
+  if (event.target instanceof Element && event.target.closest('.chat-mode-menu')) return;
   const chat = chats[state.activeId];
   if (chat?.hasPermission()) {
     event.preventDefault();

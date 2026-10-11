@@ -1,5 +1,5 @@
 import os from 'node:os';
-import type { ChatEvent, ChatInfo, PermissionAnswer } from '../shared/chat.ts';
+import type { ChatEvent, ChatInfo, PermissionAnswer, PermissionMode } from '../shared/chat.ts';
 import type { AgentProvider, AgentSession } from './provider.ts';
 
 function permissionKey(event: { tool: string; input: unknown }): string {
@@ -11,6 +11,7 @@ interface Chat {
   sessionId: string | null;
   cwd: string | null;
   busy: boolean;
+  mode: PermissionMode;
   // Set when New Claude Chat replaced this chat: no event of it is forwarded any more.
   discarded: boolean;
   // Requests approved for this session.
@@ -24,6 +25,8 @@ export interface ChatsOptions {
   folders: { list: (workspaceId: string) => string[] };
   emit: (workspaceId: string, event: ChatEvent) => void;
   home?: string;
+  // The mode a new chat starts in (the user's Claude settings). Manual when not given.
+  defaultMode?: () => PermissionMode;
   // The settings' default folder for a workspace without folders.
   defaultFolder?: () => { folder: string | null; notice: string | null };
 }
@@ -45,12 +48,14 @@ export class Chats {
   folders: ChatsOptions['folders'];
   emit: ChatsOptions['emit'];
   home: string;
+  defaultMode: () => PermissionMode;
   defaultFolder: NonNullable<ChatsOptions['defaultFolder']>;
   chats = new Map<string, Chat>();
   // Every session not yet gone, including interrupted ones.
   live = new Set<AgentSession>();
 
-  constructor({ provider, folders, emit, home = os.homedir(), defaultFolder = () => ({ folder: null, notice: null }) }: ChatsOptions) {
+  constructor({ provider, folders, emit, home = os.homedir(), defaultMode = () => 'manual', defaultFolder = () => ({ folder: null, notice: null }) }: ChatsOptions) {
+    this.defaultMode = defaultMode;
     this.defaultFolder = defaultFolder;
     this.provider = provider;
     this.folders = folders;
@@ -82,7 +87,7 @@ export class Chats {
   _chat(workspaceId: string): Chat {
     let chat = this.chats.get(workspaceId);
     if (!chat) {
-      chat = { session: null, sessionId: null, cwd: null, busy: false, discarded: false, allowed: new Set(), asked: new Map() };
+      chat = { session: null, sessionId: null, cwd: null, busy: false, mode: this.defaultMode(), discarded: false, allowed: new Set(), asked: new Map() };
       this.chats.set(workspaceId, chat);
     }
     return chat;
@@ -114,12 +119,15 @@ export class Chats {
         cwd,
         // A process that ended (after an interrupt, say) is replaced by one that resumes the same session.
         resume: chat.sessionId || undefined,
+        permissionMode: chat.mode,
         onEvent: event => {
           // A chat replaced by New Claude Chat is silent.
           if (chat.discarded) return;
           // The interrupted marker of an older process still counts.
           if (chat.session !== session && event.type !== 'interrupted') return;
           if (event.type === 'session') chat.sessionId = event.id;
+          // A mode the process reports itself. The label follows; nothing is sent back.
+          if (event.type === 'mode') chat.mode = event.mode;
           const current = chat.session === session;
           if (event.type === 'permission-request') {
             // A request approved for this session is answered without asking again.
@@ -154,6 +162,20 @@ export class Chats {
     chat.asked.delete(id);
     if (answer.allow && answer.scope === 'session') chat.allowed.add(key);
     chat.session.answerPermission(id, { allow: answer.allow, message: answer.message, ...(answer.answers ? { answers: answer.answers } : {}) });
+  }
+
+  // The permission mode of the chat, for the composer label.
+  mode(workspaceId: string): PermissionMode {
+    return this._chat(workspaceId).mode;
+  }
+
+  // The person chose a mode. A running process is told; otherwise the next process starts with it.
+  setMode(workspaceId: string, mode: PermissionMode): void {
+    const chat = this._chat(workspaceId);
+    if (chat.mode === mode) return;
+    chat.mode = mode;
+    const session = chat.session;
+    if (session && session.alive && !session.interrupting) session.setPermissionMode?.(mode);
   }
 
   interrupt(workspaceId: string): void {
