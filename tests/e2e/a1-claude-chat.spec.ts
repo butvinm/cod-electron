@@ -56,7 +56,8 @@ const chat = (page: Page) => page.getByTestId('workspace-area').getByTestId('cla
 const composer = (page: Page) => chat(page).getByRole('textbox', { name: 'Message Claude' });
 const replies = (page: Page) => chat(page).getByTestId('chat-assistant-message');
 async function requireChat(page: Page) {
-  await expect(chat(page), 'Story #8 Claude chat is missing: each workspace needs a visible chat pane').toBeVisible();
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+n' : 'Control+n');
+  await expect(chat(page), 'Story #8 Claude chat is missing: New Claude Chat must show the chat pane').toBeVisible();
 }
 async function send(page: Page, message: string) {
   await composer(page).focus();
@@ -219,8 +220,7 @@ test.describe('AC4 first folder', () => {
     const panel = page.getByTestId('project-panel');
     await expect(panel).toBeVisible();
     await expect(panel.getByTestId('project-root')).toHaveCount(0);
-    await panel.getByTestId('project-add-folder').focus();
-    await page.keyboard.press('Enter');
+    await page.keyboard.press(`${modifier}+Shift+a`);
     await expect(panel.getByTestId('project-root')).toHaveCount(1);
     await expect(panel.getByTestId('project-root')).toHaveAttribute('data-path', fake.folders[0]);
     await expect(chat(page).getByTestId('chat-working-directory')).toContainText(fake.folders[0]);
@@ -248,9 +248,7 @@ test.describe('AC4 first folder', () => {
     await expect(panel).toBeVisible();
     await expect(panel.getByTestId('project-root')).toHaveCount(0);
     for (const [index, folder] of fake.folders.entries()) {
-      const add = panel.getByTestId('project-add-folder');
-      await add.focus();
-      await page.keyboard.press('Enter');
+      await page.keyboard.press(`${modifier}+Shift+a`);
       await expect(panel.getByTestId('project-root')).toHaveCount(index + 1);
       await expect(panel.getByTestId('project-root').nth(index)).toHaveAttribute('data-path', folder);
     }

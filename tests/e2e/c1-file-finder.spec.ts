@@ -80,9 +80,7 @@ async function prepareWorkspace(page: Page, projects: Projects) {
   await page.keyboard.press(`${modifier}+Shift+e`);
   const panel = page.getByTestId('project-panel');
   await expect(panel, 'Prerequisite: story #4 project panel must support adding roots').toBeVisible();
-  const add = panel.getByTestId('project-add-folder');
-  await add.focus();
-  await page.keyboard.press('Enter');
+  await page.keyboard.press(`${modifier}+Shift+a`);
   for (const folder of projects.folders) {
     await expect(panel.getByTestId('project-root').and(page.locator(`[data-path=${JSON.stringify(folder)}]`))).toBeVisible();
   }
@@ -108,7 +106,7 @@ test('AC1: Cmd+P opens the finder and Escape restores the previous focus', async
   await expect(finder(page)).toBeHidden();
   await expect(tab).toBeFocused();
   await prepareWorkspace(page, projects);
-  const previousFocus = page.getByTestId('project-panel').getByTestId('project-add-folder');
+  const previousFocus = page.getByTestId('project-panel');
   await previousFocus.focus();
   await openFinder(page);
   await page.keyboard.press('Escape');
