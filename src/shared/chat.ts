@@ -39,7 +39,26 @@ export function permissionModeLabel(mode: PermissionMode): string {
   return PERMISSION_MODES.find(entry => entry.mode === mode)?.label ?? 'Manual';
 }
 
-export type ErrorKind = 'not-logged-in' | 'failed' | 'missing';
+// One session of the Claude CLI store, as the picker lists it.
+export interface SessionSummary {
+  id: string;
+  folder: string;
+  // The first user message.
+  title: string;
+  // Time of the last turn, in ms since the epoch.
+  updated: number;
+}
+
+// What a stored session replays into a chat: the same events a live chat gets, plus the person's messages.
+export type SessionEvent = ChatEvent | { type: 'user-message'; text: string };
+
+export interface OpenedSession {
+  id: string;
+  folder: string;
+  events: SessionEvent[];
+}
+
+export type ErrorKind ='not-logged-in' | 'failed' | 'missing';
 
 // The person's answer to a permission request. Scope 'session' remembers an allow for the same tool and input.
 export interface PermissionAnswer {
