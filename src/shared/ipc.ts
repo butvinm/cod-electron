@@ -45,12 +45,24 @@ export type Action =
   | 'focus-panel'
   | 'file-finder'
   | 'save'
-  | 'close-tab';
+  | 'close-tab'
+  | 'open-folder'
+  | 'open-recent'
+  | 'new-chat'
+  | 'add-folder'
+  | 'recent-1'
+  | 'recent-2'
+  | 'recent-3'
+  | 'recent-4'
+  | 'recent-5';
 
 // Page -> main requests that get an answer (ipcRenderer.invoke / ipcMain.handle).
 export interface InvokeChannels {
   'project:roots': { args: [workspaceId: string]; result: string[] };
   'project:add-folders': { args: [workspaceId: string]; result: string[] };
+  'project:pick-folders': { args: []; result: string[] };
+  'project:add-paths': { args: [workspaceId: string, paths: string[]]; result: string[] };
+  'recent:list': { args: []; result: string[] };
   'project:forget': { args: [workspaceId: string]; result: void };
   'project:read-dir': { args: [dir: string]; result: DirEntry[] };
   'project:open-file': { args: [workspaceId: string, file: string]; result: void };
@@ -69,6 +81,7 @@ export interface InvokeChannels {
 export interface EventChannels {
   'finder:rebuilt': string;                 // workspace id
   'chat:event': ChatEventPayload;
+  'recent:changed': undefined;              // the recent folders list changed, ask for it again
   'project:roots-changed': RootsChanged;
   'quit:ask': number;                       // request id, answered on 'quit:answer'
 }
@@ -105,6 +118,12 @@ export interface CodApi {
   project: {
     roots(workspaceId: string): Promise<string[]>;
     addFolders(workspaceId: string): Promise<string[]>;
+    // Shows the folder dialog and only records the choice as recent. Nothing is added to a workspace.
+    pickFolders(): Promise<string[]>;
+    // Adds folders the person picked or opened before. The main process refuses any other path.
+    addPaths(workspaceId: string, paths: string[]): Promise<string[]>;
+    recent(): Promise<string[]>;
+    onRecentChanged(callback: () => void): void;
     forget(workspaceId: string): Promise<void>;
     readDir(dir: string): Promise<DirEntry[]>;
     openFile(workspaceId: string, file: string): Promise<void>;
