@@ -15,7 +15,7 @@ const rgb = (hex: string) => `rgb(${[1, 3, 5].map(offset => parseInt(hex.slice(o
 const gray = rgb(theme['element.selected']!);
 const blue = rgb(theme['border.focused']!);
 const files = ['sample.ts', 'sample.json', 'sample.md', 'sample.rs', 'sample.py', 'sample.unknown-cod37'];
-const icons = ['typescript', 'code', 'book', 'rust', 'python', 'file'];
+const icons = ['file-code', 'file-braces', 'book-open', 'file-code', 'file-code', 'file'];
 
 const test = base.extend<{ project: string }>({
   project: [async ({}, use) => {
@@ -76,7 +76,7 @@ async function open(page: Page, file: string) {
 
 async function expectIcon(row: Locator, name: string) {
   const icon = row.getByTestId('project-entry-icon');
-  await expect(icon, `AC1: every row must render Zed's ${name} icon`).toBeVisible();
+  await expect(icon, `AC1: every row must render Lucide's ${name} icon`).toBeVisible();
   const svg = readFileSync(path.join(reference, `${name}.svg`), 'utf8');
   await expect.poll(() => icon.evaluate(async (node, expected) => {
     const normalize = (element: Element) => Array.from(element.querySelectorAll('path, circle, rect, line, polyline, polygon, ellipse')).map(shape => ({
@@ -91,7 +91,7 @@ async function expectIcon(row: Locator, name: string) {
     const upstream = new DOMParser().parseFromString(expected, 'image/svg+xml').documentElement;
     const shapes = normalize(rendered);
     return shapes.length > 0 && JSON.stringify(shapes) === JSON.stringify(normalize(upstream));
-  }, svg), `AC1: rendered ${name} geometry must match the pinned Zed icon`).toBe(true);
+  }, svg), `AC1: rendered ${name} geometry must match the pinned Lucide icon`).toBe(true);
 }
 
 async function expectFrame(row: Locator, focused: boolean) {
@@ -103,15 +103,15 @@ async function expectFrame(row: Locator, focused: boolean) {
   }, blue), focused ? 'AC3: selected row must have a border.focused frame' : 'AC2: editor-focused row must have no focus frame').toBe(focused);
 }
 
-test('AC1: rows render Zed file-type icons and closed or open folder icons', async ({ cod: { page }, project }) => {
+test('AC1: rows use Zed file-type mapping with Lucide icons and closed or open folder icons', async ({ cod: { page }, project }) => {
   await setup(page, project);
-  await expectIcon(entry(page, project), 'folder_open');
+  await expectIcon(entry(page, project), 'folder-open');
   const folder = path.join(project, 'branches');
   await expectIcon(entry(page, folder), 'folder');
   await select(page, folder);
   await page.keyboard.press('ArrowRight');
   await expect(entry(page, folder)).toHaveAttribute('aria-expanded', 'true');
-  await expectIcon(entry(page, folder), 'folder_open');
+  await expectIcon(entry(page, folder), 'folder-open');
   await page.keyboard.press('ArrowLeft');
   await expect(entry(page, folder)).toHaveAttribute('aria-expanded', 'false');
   await expectIcon(entry(page, folder), 'folder');
