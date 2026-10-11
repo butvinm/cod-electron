@@ -32,7 +32,7 @@ const editor = Editor.create({
 
 // Each workspace has one chat. Its DOM is kept, so render() only moves it into the new area.
 const chats: Record<string, Chat.ChatView | undefined> = {};
-const chatOf = (id: string): Chat.ChatView => (chats[id] = chats[id] || Chat.create({ workspaceId: id, chatApi: window.cod.chat, openHistory: () => toggleHistory() }));
+const chatOf = (id: string): Chat.ChatView => (chats[id] = chats[id] || Chat.create({ workspaceId: id, chatApi: window.cod.chat, openHistory: () => toggleHistory(), openFile: (file, at) => openFile(id, file, at) }));
 
 // Workspaces whose chat is open in the main area. Without a chat, an empty main area shows the start screen.
 const chatShown: Record<string, boolean | undefined> = {};
@@ -77,8 +77,8 @@ async function toggleDir(id: string, dir: string): Promise<void> {
   render();
 }
 
-function openFile(id: string, file: string): void {
-  window.cod.project.openFile(id, file).then(() => editor.open(id, file)).catch(console.error);
+function openFile(id: string, file: string, at?: { line: number; column: number }): void {
+  window.cod.project.openFile(id, file, at?.line, at?.column).then(() => editor.open(id, file, at)).catch(console.error);
 }
 
 // A click selects the row, then toggles a folder or opens a file, as in Zed.

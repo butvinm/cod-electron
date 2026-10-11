@@ -25,6 +25,11 @@ export interface FinderResult {
   positions: number[];
 }
 
+export interface ToolFile {
+  file: string;
+  line: number | null;
+}
+
 export interface RootsChanged {
   workspaceId: string;
   roots: string[];
@@ -66,7 +71,13 @@ export interface InvokeChannels {
   'recent:list': { args: []; result: string[] };
   'project:forget': { args: [workspaceId: string]; result: void };
   'project:read-dir': { args: [dir: string]; result: DirEntry[] };
-  'project:open-file': { args: [workspaceId: string, file: string]; result: void };
+  // line and column are 1-based and only passed on; the editor decides where to put the caret.
+  'project:open-file': { args: [workspaceId: string, file: string, line?: number, column?: number]; result: void };
+  // For each path written in a reply: the absolute file it means, or null. Only files inside the
+  // chat's folder or the workspace's folders are answered, so the page cannot probe other paths.
+  'chat:resolve-files': { args: [workspaceId: string, paths: string[]]; result: (string | null)[] };
+  // The file a Read, Edit, MultiEdit or Write row points at, with the first changed line of an edit.
+  'chat:tool-file': { args: [workspaceId: string, input: unknown]; result: ToolFile | null };
   'finder:prepare': { args: [workspaceId: string]; result: void };
   'finder:query': { args: [workspaceId: string, text: string]; result: FinderResult[] };
   'chat:info': { args: [workspaceId: string]; result: ChatInfo };
@@ -122,6 +133,8 @@ export interface CodApi {
     setMode(workspaceId: string, mode: PermissionMode): Promise<void>;
     // Opens an http, https or mailto link from a reply in the system browser.
     openLink(url: string): Promise<void>;
+    resolveFiles(workspaceId: string, paths: string[]): Promise<(string | null)[]>;
+    toolFile(workspaceId: string, input: unknown): Promise<ToolFile | null>;
     // The Claude CLI sessions stored for the workspace's folders, newest first.
     sessions(workspaceId: string): Promise<SessionSummary[]>;
     openSession(workspaceId: string, sessionId: string): Promise<OpenedSession | null>;
@@ -139,7 +152,7 @@ export interface CodApi {
     onRecentChanged(callback: () => void): void;
     forget(workspaceId: string): Promise<void>;
     readDir(dir: string): Promise<DirEntry[]>;
-    openFile(workspaceId: string, file: string): Promise<void>;
+    openFile(workspaceId: string, file: string, line?: number, column?: number): Promise<void>;
     finderPrepare(workspaceId: string): Promise<void>;
     finderQuery(workspaceId: string, text: string): Promise<FinderResult[]>;
     onFinderRebuilt(callback: (workspaceId: string) => void): void;

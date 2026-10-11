@@ -141,6 +141,16 @@ export function toolTarget(input: unknown): string {
   return first ? first.split('\n')[0] : '';
 }
 
+// The tools whose rows link to the file in their file_path.
+const FILE_TOOLS = new Set(['Read', 'Edit', 'MultiEdit', 'Write']);
+
+// The file_path of a Read, Edit, MultiEdit or Write call, as written, or null.
+export function filePathOf(item: { name: string; input: unknown }): string | null {
+  if (!FILE_TOOLS.has(item.name) || !item.input || typeof item.input !== 'object') return null;
+  const value = (item.input as Record<string, unknown>).file_path; // a tool input is a JSON object with any fields
+  return typeof value === 'string' && value !== '' ? value : null;
+}
+
 export function toolInputText(input: unknown): string {
   return JSON.stringify(input ?? {}, null, 2);
 }

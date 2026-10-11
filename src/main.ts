@@ -6,6 +6,7 @@ import { RecentFolders } from './recent-folders.ts';
 import { readDir } from './project-fs.ts';
 import { FileIndex } from './file-index.ts';
 import { EditorFiles } from './editor-files.ts';
+import { resolveMention, firstChangedLine, replacementsOf } from './chat-files.ts';
 import { createClaudeProvider } from './agents/claude.ts';
 import { Chats } from './agents/chats.ts';
 import { listSessions, openSession } from './agents/claude-sessions.ts';
@@ -63,9 +64,9 @@ async function pickFolders(): Promise<string[]> {
 
 // The boundary where "open this file" leaves the panel. The editor story will handle it here.
 // COD_TEST_OPEN_REQUEST_LOG_PATH makes every request append one JSON line, for tests.
-function dispatchOpenFile(workspaceId: string, file: string): void {
+function dispatchOpenFile(workspaceId: string, file: string, line?: number, column?: number): void {
   const log = process.env.COD_TEST_OPEN_REQUEST_LOG_PATH;
-  if (log) fs.appendFileSync(log, `${JSON.stringify({ path: file, workspaceId })}\n`);
+  if (log) fs.appendFileSync(log, `${JSON.stringify({ path: file, workspaceId, ...(line === undefined ? {} : { line, column }) })}\n`);
 }
 
 const fileIndex = new FileIndex(id => folders.list(id), workspaceId => sendToPage('finder:rebuilt', workspaceId));
@@ -186,9 +187,34 @@ handle('project:read-dir', dir => {
   return readDir(dir);
 });
 
-handle('project:open-file', (workspaceId, file) => {
+handle('project:open-file', (workspaceId, file, line, column) => {
   if (typeof file !== 'string' || !folders.workspaceContains(String(workspaceId), file)) throw new Error('Not inside a workspace folder');
-  dispatchOpenFile(String(workspaceId), file);
+  const point = (value: unknown): number | undefined => (typeof value === 'number' && Number.isInteger(value) && value >= 1 ? value : undefined);
+  dispatchOpenFile(String(workspaceId), file, point(line), point(column));
+});
+
+// Files named in a chat. The answer is only ever a file inside the chat's folder or a workspace folder.
+function resolveChatFile(workspaceId: string, mention: unknown): string | null {
+  const bases = [chats.info(workspaceId).cwd, ...folders.list(workspaceId)];
+  return resolveMention(mention as string, bases, file => folders.workspaceContains(workspaceId, file));
+}
+
+handle('chat:resolve-files', (workspaceId, paths) => {
+  if (!Array.isArray(paths)) throw new Error('Paths must be a list');
+  return paths.slice(0, 100).map(mention => resolveChatFile(String(workspaceId), mention));
+});
+
+handle('chat:tool-file', (workspaceId, input) => {
+  const fields = input && typeof input === 'object' ? input as Record<string, unknown> : {}; // a tool input is a JSON object
+  const file = resolveChatFile(String(workspaceId), fields.file_path);
+  if (file === null) return null;
+  const edits = replacementsOf(input);
+  if (edits.length === 0) return { file, line: null };
+  try {
+    return { file, line: firstChangedLine(editorFiles.read(String(workspaceId), file).text, edits) };
+  } catch {
+    return { file, line: null };
+  }
 });
 
 // Editor file access. Same realpath containment as project reads.
