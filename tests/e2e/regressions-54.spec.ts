@@ -259,7 +259,7 @@ test(permissionArrivalTest, async ({ cod: { page }, regression }) => {
   await expect(selector).toBeFocused();
   await expect(selector).toHaveText('Manual');
   await expect(prompt, 'AC5: Enter for the mode menu must leave permission pending').toBeVisible();
-  await expect(prompt).toHaveText(promptText);
+  expect(await prompt.innerText()).toBe(promptText);
   for (const name of ['Allow once', 'Allow for this session', 'Deny']) await expect(prompt.getByRole('button', { name, exact: true })).toBeEnabled();
   expect(regression.records().filter(record => record.kind === 'permission-answer')).toHaveLength(0);
   expect(regression.records().filter(record => record.kind === 'tool-run')).toHaveLength(0);
@@ -288,7 +288,7 @@ test(questionEscapeTest, async ({ cod: { page }, regression }) => {
   await expect(menu).toBeHidden();
   await page.keyboard.press('Escape');
   await expect(form(page), 'AC5: Escape on the closed mode selector must leave the question pending').toBeVisible();
-  await expect(form(page)).toHaveText(questionText);
+  expect(await form(page).innerText()).toBe(questionText);
   await expect(selector).toBeFocused();
   await expect(selector).toHaveText('Manual');
   await expect(menu).toBeHidden();
