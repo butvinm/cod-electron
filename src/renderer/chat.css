@@ -180,6 +180,26 @@
 .chat-composer::placeholder { color: var(--text-muted); }
 .chat-composer:focus { border-color: #47679e; }
 
+/* The permission mode label under the composer, with its menu opening upward. */
+.chat-mode { position: relative; display: inline-block; margin-top: 6px; }
+.chat-mode-button { padding: 2px 8px; font-size: 12px; }
+.chat-mode-menu {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  z-index: 10;
+  min-width: 140px;
+  margin-bottom: 4px;
+  padding: 4px;
+  background-color: var(--tab-bar);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.chat-mode-menu[hidden] { display: none; }
+.chat-mode-item { display: block; width: 100%; padding: 4px 8px; text-align: left; font-size: 12px; }
+.chat-mode-item[aria-checked="true"] { color: var(--text); }
+.chat-mode-item:focus-visible { background-color: var(--hover); color: var(--text); }
+
 .chat-status { flex: none; color: var(--text-muted); }
 .claude-chat:has(.chat-permission:not([hidden])) .chat-status { color: #dec184; }
 

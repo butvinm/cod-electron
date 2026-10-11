@@ -4,6 +4,8 @@
 import type { CodApi } from '../shared/ipc.ts';
 import { createChat, reduce, toolTarget, toolInputText, statusOf, permissionText, queueHint, promptFocusTarget, type ChatItem, type ChatModelEvent, type PermissionRequest } from './chat-model.ts';
 import { renderMarkdown } from './markdown.ts';
+import { createModeSelector } from './chat-mode.ts';
+import { nextPermissionMode, type PermissionMode } from '../shared/chat.ts';
 
 type ToolItem = Extract<ChatItem, { kind: 'tool' }>;
 
@@ -57,8 +59,14 @@ export function create({ workspaceId, chatApi }: ChatOptions): ChatView {
     rows: '1',
     spellcheck: 'false',
   });
+  // Set a mode: shown at once, then sent on. The main process answers events only for modes Claude reports itself.
+  const modeSelector = createModeSelector(chooseMode);
+  function chooseMode(mode: PermissionMode): void {
+    apply({ type: 'mode', mode });
+    chatApi.setMode(workspaceId, mode).catch(console.error);
+  }
   const element = node('div', { class: 'claude-chat', testid: 'claude-chat', 'data-workspace-id': workspaceId },
-    header, transcript, promptBox, node('div', { class: 'chat-input' }, composer));
+    header, transcript, promptBox, node('div', { class: 'chat-input', testid: 'chat-composer-area' }, composer, modeSelector.element));
 
   function growComposer(): void {
     // Set through the CSSOM, because the CSP blocks inline style attributes.
@@ -271,6 +279,7 @@ export function create({ workspaceId, chatApi }: ChatOptions): ChatView {
     }
     element.classList.toggle('chat-busy', state.busy);
     status.textContent = statusOf(state);
+    modeSelector.show(state.mode);
     drawPrompt();
     if (nearBottom) transcript.scrollTop = transcript.scrollHeight;
   }
@@ -297,6 +306,12 @@ export function create({ workspaceId, chatApi }: ChatOptions): ChatView {
   }
 
   composer.addEventListener('keydown', event => {
+    // Shift+Tab cycles the permission mode, as in Claude Code. The focus and the draft stay.
+    if (event.key === 'Tab' && event.shiftKey && !event.isComposing && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      event.preventDefault();
+      chooseMode(nextPermissionMode(state.mode));
+      return;
+    }
     if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
     event.preventDefault();
     submit();
@@ -315,5 +330,6 @@ export function create({ workspaceId, chatApi }: ChatOptions): ChatView {
   }
 
   refreshInfo();
+  chatApi.mode(workspaceId).then(mode => apply({ type: 'mode', mode })).catch(console.error);
   return { element, apply, refreshInfo, interrupt, hasPermission: () => state.permission !== null, focusPrompt, isBusy: () => state.busy, composer };
 }
