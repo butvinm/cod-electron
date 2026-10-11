@@ -135,13 +135,61 @@ button:focus-visible, .tab:focus-visible { outline: 1px solid #47679e; outline-o
 
 .project-panel:focus { outline: 1px solid #47679e; outline-offset: -1px; }
 
-.project-header {
+/* Start screen of an empty main area, after Zed's Welcome page: centered sections of quiet buttons. */
+.start-screen {
   display: flex;
-  flex: none;
-  padding: 4px 8px;
+  flex: 1;
+  min-height: 0;
+  justify-content: center;
+  align-items: center;
+  overflow: auto;
+  background-color: var(--editor);
 }
 
-.project-add { padding: 2px 8px; }
+.workspace-area:has(.editor.has-content) .start-screen { display: none; }
+
+.start-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+  max-width: 512px;
+  padding: 24px;
+}
+
+.start-section { display: flex; flex-direction: column; gap: 8px; }
+
+.start-header { display: flex; align-items: center; gap: 8px; }
+
+.start-title {
+  flex: none;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.start-rule { flex: 1; height: 1px; background-color: var(--border-variant); }
+
+.start-list { display: flex; flex-direction: column; gap: 2px; min-height: 28px; margin: 0; padding: 0; list-style: none; }
+
+.start-item { display: block; }
+
+.start-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  text-align: left;
+  color: var(--text);
+}
+
+.start-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.start-binding { flex: none; font-size: 12px; color: var(--text-muted); }
 
 .project-tree {
   flex: 1;
