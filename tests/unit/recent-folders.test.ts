@@ -39,6 +39,22 @@ test('RecentFolders persists across instances, most recent first', () => {
   }
 });
 
+test('RecentFolders announces every add, also when it only reorders the list', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cod-recent-'));
+  try {
+    const store = new RecentFolders(path.join(dir, 'recent.json'));
+    let changes = 0;
+    store.on('change', () => { changes++; });
+    store.add(['/a']);
+    store.add(['/b']);
+    store.add(['/a']);
+    assert.equal(changes, 3);
+    assert.deepEqual(store.list, ['/a', '/b']);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('RecentFolders hides deleted folders and survives a damaged file', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cod-recent-'));
   try {

@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { EventEmitter } from 'node:events';
 
 // How many recent folders are remembered. The start screen shows the first five.
 export const MAX_RECENT = 30;
@@ -18,11 +19,13 @@ export function cleanRecent(value: unknown): string[] {
 }
 
 // The recently opened folders, most recent first, kept in one JSON file in the user data directory.
-export class RecentFolders {
+// Emits 'change' after every add, including one that only moves a folder to the front.
+export class RecentFolders extends EventEmitter<{ change: [] }> {
   file: string;
   list: string[];
 
   constructor(file: string) {
+    super();
     this.file = file;
     this.list = [];
     try { this.list = cleanRecent(JSON.parse(fs.readFileSync(file, 'utf8'))); } catch { /* no file yet, or damaged: start empty */ }
@@ -46,5 +49,6 @@ export class RecentFolders {
     } catch (error) {
       console.error(error);
     }
+    this.emit('change');
   }
 }

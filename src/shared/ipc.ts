@@ -80,6 +80,7 @@ export interface InvokeChannels {
 export interface EventChannels {
   'finder:rebuilt': string;                 // workspace id
   'chat:event': ChatEventPayload;
+  'recent:changed': undefined;              // the recent folders list changed, ask for it again
   'project:roots-changed': RootsChanged;
   'quit:ask': number;                       // request id, answered on 'quit:answer'
 }
@@ -119,6 +120,7 @@ export interface CodApi {
     // Adds folders the person picked or opened before. The main process refuses any other path.
     addPaths(workspaceId: string, paths: string[]): Promise<string[]>;
     recent(): Promise<string[]>;
+    onRecentChanged(callback: () => void): void;
     forget(workspaceId: string): Promise<void>;
     readDir(dir: string): Promise<DirEntry[]>;
     openFile(workspaceId: string, file: string): Promise<void>;

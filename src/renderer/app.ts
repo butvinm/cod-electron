@@ -364,6 +364,8 @@ window.cod.project.onRootsChanged(async ({ workspaceId, roots }) => {
   await refreshRecents();
 });
 
+// Any folder action reorders the list, also when no folder was added to a workspace.
+window.cod.project.onRecentChanged(() => { void refreshRecents(); });
 void refreshRecents();
 
 // Esc interrupts the running reply of the active workspace, wherever focus is in it.

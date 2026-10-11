@@ -108,6 +108,9 @@ const cod: CodApi = {
     pickFolders: () => invoke('project:pick-folders'),
     addPaths: (workspaceId, paths) => invoke('project:add-paths', workspaceId, paths),
     recent: () => invoke('recent:list'),
+    onRecentChanged(callback) {
+      on('recent:changed', () => callback());
+    },
     forget: workspaceId => invoke('project:forget', workspaceId),
     readDir: dir => invoke('project:read-dir', dir),
     openFile: (workspaceId, file) => invoke('project:open-file', workspaceId, file),

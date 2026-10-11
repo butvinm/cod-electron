@@ -85,6 +85,8 @@ handle('project:roots', workspaceId => folders.list(String(workspaceId)));
 // Recent folders live in the user data directory. A folder counts as opened when the person picks it.
 const recent = new RecentFolders(path.join(app.getPath('userData'), 'recent-folders.json'));
 
+recent.on('change', () => sendToPage('recent:changed', undefined));
+
 async function pickAndRemember(): Promise<string[]> {
   // Paths keep the form the dialog gave, as the project panel shows them.
   const picked = (await pickFolders()).filter(folder => realOrNull(folder) !== null);
