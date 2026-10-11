@@ -20,6 +20,7 @@ Output: the hand-back block from `.claude/agents/reviewer.md`. You do not change
    - Keyboard everywhere: new controls are focusable, have shortcuts or palette commands where the story implies them, and show focus.
    - Looks like Zed: quiet colors, dense layout, no decorative chrome. If there is a screenshot or clip, look at it.
 6. Code quality:
+   - the stack in `AGENTS.md` (TypeScript in strict mode for app code and tests); any deviation is blocking unless the PM approved it in the issue;
    - clear module boundaries (UI, main-process services, agent providers); no app APIs exposed to external web pages;
    - no new dependency without a reason in the PR body;
    - errors handled at boundaries, no swallowed exceptions;
@@ -36,5 +37,5 @@ Story: #<issue>
 Verdict: APPROVE | REQUEST CHANGES
 | AC | Covered by test | Implemented | Evidence |
 Findings (blocking first): numbered, each "[blocking|non-blocking] file:line - problem - what to change"
-Checklist: story scope | tests untouched | keyboard | minimal UI | Zed look | public-repo scrub | text rules | commits (each OK or FAIL)
+Checklist: story scope | stack | tests untouched | keyboard | minimal UI | Zed look | public-repo scrub | text rules | commits (each OK or FAIL)
 ```
