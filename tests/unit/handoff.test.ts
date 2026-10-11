@@ -49,6 +49,31 @@ test('Chats.handoff gives the command, ends the idle process and the next send r
   assert.equal(fake.started[1].options.cwd, '/proj/a');
 });
 
+test('Chats.handoff after opening the same session during a pending handoff still waits for the old process', async () => {
+  let finish = () => {};
+  const fake = provider();
+  const start = fake.start.bind(fake);
+  fake.start = options => {
+    const session = start(options) as Fake;
+    session.close = () => new Promise<void>(resolve => { finish = () => { session.alive = false; resolve(); }; });
+    return session;
+  };
+  const chats = new Chats({ provider: fake, folders: { list: () => ['/proj/a'] }, emit: () => {}, home: '/home/me' });
+  chats.send('w1', 'hi');
+  fake.started[0].options.onEvent({ type: 'session', id: 'sid' });
+  fake.started[0].options.onEvent({ type: 'turn-end' });
+  const settled: string[] = [];
+  const first = chats.handoff('w1').then(value => { settled.push('first'); return value; });
+  const opened = chats.open('w1', 'sid', '/proj/a').then(() => { settled.push('open'); });
+  await new Promise(resolve => setTimeout(resolve, 10));
+  assert.deepEqual(settled, []);
+  finish();
+  await Promise.all([first, opened]);
+  const second = await chats.handoff('w1');
+  assert.equal(second, "cd '/proj/a' && claude --resume sid");
+  assert.equal(fake.started[0].alive, false, 'the old process is gone before the second command is returned');
+});
+
 test('Chats.handoff called twice quickly returns the command only after the process is gone', async () => {
   let finish = () => {};
   const fake = provider();

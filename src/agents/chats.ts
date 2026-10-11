@@ -212,13 +212,14 @@ export class Chats {
     this.chats.delete(workspaceId);
     if (!chat) return Promise.resolve();
     chat.discarded = true;
-    if (!chat.session) return Promise.resolve();
+    // A process ended by Continue in Terminal may still be shutting down: wait for it too.
+    if (!chat.session) return Promise.resolve(chat.closing);
     // Detach first, so late events of the old process never reach the new chat.
     const session = chat.session;
     chat.session = null;
     chat.busy = false;
     chat.asked.clear();
-    return Promise.resolve(session.close());
+    return Promise.all([session.close(), chat.closing]).then(() => {});
   }
 
   // The folders whose stored Claude sessions the workspace lists: its own, else the one the chat would run in.
@@ -241,7 +242,8 @@ export class Chats {
   forget(workspaceId: string): Promise<void> {
     const chat = this.chats.get(workspaceId);
     this.chats.delete(workspaceId);
-    return chat && chat.session ? Promise.resolve(chat.session.close()) : Promise.resolve();
+    if (!chat) return Promise.resolve();
+    return Promise.all([chat.session ? chat.session.close() : undefined, chat.closing]).then(() => {});
   }
 
   // Stops every process, interrupted ones included. Resolves when they are all gone.
