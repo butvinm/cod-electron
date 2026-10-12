@@ -24,7 +24,7 @@ Waiting for acceptance: #<n>, ...
 
 ## Between meetings: work alone
 
-1. Take the top unstarted story and drive it through the workflow in `AGENTS.md`: QA tests PR -> developer PR -> reviewer -> CI -> clip. Run independent stories in parallel when they own different files.
+1. Take the top unstarted story and drive it through the workflow in `AGENTS.md`: QA tests PR -> developer PR -> reviewer -> CI -> check list. Run independent stories in parallel when they own different files.
 2. Keep each agent task under about 20 minutes with a checkpoint. If a task runs long, stop it, read its last checkpoint and split the rest.
 3. Keep one owner per file: before a handoff, check no other open task owns the same files.
 4. Spot-check, do not redo: open one test and one diff per story and compare them with the criteria.
@@ -36,7 +36,7 @@ Waiting for acceptance: #<n>, ...
 The meeting closes the sprint, in the same session. It happens when the obligations are met (or clearly will not be) and the stakeholder is available. Keep it under about 15 minutes. Agenda:
 
 0. Previous obligations: read the last minutes in `docs/meetings/` and mark each obligation met or missed, with evidence. A missed one gets a reason and a new date.
-1. Demo: for each story that reached "clip PASS" since the last meeting, the `report-to-stakeholder` report. Ask to accept or reject each one.
+1. Demo: for each story that reached "check list PASS" since the last meeting, the `report-to-stakeholder` report with its check list. Ask to accept or reject each one.
 2. Accepted: close the issue. Rejected: reopen the work with the stakeholder's words as a new criterion or comment.
 3. Escalations: go through the open `stakeholder` issues. Record each answer on its issue and close it.
 4. Next: show the top of the queue and take the stakeholder's pick, reorder or cuts.
@@ -51,7 +51,7 @@ Accepted stories merged to `master` are the release. From the first version the 
 
 ```
 Since last meeting
-| Story | Result | Clip | PR |
+| Story | Result | Check list | PR |
 | --- | --- | --- | --- |
 | #<n> <title> | ready for acceptance / not done: <reason> | <link> | <link> |
 
