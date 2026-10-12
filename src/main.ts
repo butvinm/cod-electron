@@ -195,8 +195,17 @@ handle('project:open-file', (workspaceId, file) => {
 handle('editor:read', (workspaceId, file) => editorFiles.read(String(workspaceId), file));
 handle('editor:write', (workspaceId, file, contents) => { editorFiles.write(String(workspaceId), file, contents); });
 
+// Test hook: COD_TEST_QUIET=1 keeps windows hidden and unthrottled, so a test run never takes the screen or the keyboard.
+// COD_TEST_VISIBLE=1 turns it off again, for recordings.
+const quietWindows = process.env.COD_TEST_QUIET === '1' && process.env.COD_TEST_VISIBLE !== '1';
+
+// On macOS a launched app becomes the frontmost app even with no visible window, and then gets OS keystrokes.
+// A prohibited app never activates and has no Dock icon.
+if (quietWindows && process.platform === 'darwin') app.setActivationPolicy('prohibited');
+
 function createWindow(): void {
   const win = new BrowserWindow({
+    show: !quietWindows,
     width: 1100,
     height: 720,
     backgroundColor: '#3b414d',
@@ -207,6 +216,7 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      ...(quietWindows ? { backgroundThrottling: false } : {}),
     },
   });
   mainWindow = win;

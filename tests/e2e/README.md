@@ -347,3 +347,7 @@ caffeinate -dimsu npx playwright test tests/e2e/a1-claude-chat.spec.ts --reporte
 ```
 
 Return `artifacts/8/run.txt` to QA for the per-criterion expected-failure verdict. There are eight tests because AC5 has three independent launch scenarios. No files are committed or staged. Developer owns app implementation, the executable hook and the DOM contract; QA retains the acceptance assertions.
+
+## Quiet mode on macOS (story #65)
+
+`tests/e2e/helpers/electron.ts` launches the app with `COD_TEST_QUIET=1`. Then `src/main.ts` creates windows with `show: false` and `backgroundThrottling: false`, and on macOS sets the activation policy to `prohibited`, so the app never comes to the front, never takes keyboard focus and OS keystrokes cannot reach it. Playwright input goes through the DevTools protocol, so tests do not need a visible window. `COD_TEST_VISIBLE=1` turns quiet mode off, for recordings (see `.agents/skills/record-clip/SKILL.md`). `npm start` is unchanged.
