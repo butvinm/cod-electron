@@ -6,7 +6,7 @@ Cod is a desktop workspace for agent-driven development (Electron, Linux first, 
 
 | Role         | Who                                                                   | Owns                                                         | Never                                                       |
 | ------------ | --------------------------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------- |
-| Stakeholder  | the human                                                             | priorities, acceptance, daily use                            | does QA or debugging for the team                           |
+| Stakeholder  | the human                                                             | priorities, feature and UX feedback, daily use               | does QA or debugging for the team                           |
 | PM / Analyst | main Claude Code session                                              | backlog, stories, the queue, reports to the stakeholder      | writes app code or tests; it delegates and only spot-checks |
 | QA           | Codex (`.claude/agents/qa.md`); check-list mode: Claude `qa` subagent | acceptance tests, test runs, check lists, PASS/FAIL verdicts | edits app code                                              |
 | Developer    | Claude subagent (`.claude/agents/developer.md`)                       | implementation of one story per pull request                 | weakens, skips or deletes acceptance tests                  |
@@ -22,20 +22,21 @@ GitHub Issues and the project board are the shared state. No agent relies on ano
 4. Review. A separate Codex run reviews the diff against the story (`review-pr`): approve or request changes with file:line evidence.
 5. CI. All suites green on Linux (macOS when relevant).
 6. Check list. QA writes a short list of numbered steps the stakeholder can follow in the running app to check each criterion (`check-list`), follows the steps in the app itself, and posts the list with PASS/FAIL per criterion on the issue.
-7. Stakeholder acceptance. The PM reports (`report-to-stakeholder`); the stakeholder follows the check list in the app and accepts or rejects. Only then is the issue closed.
+7. Beta pass. Before each meeting, the PM runs a beta tester pass with the `user-story` skill: invented personas explore the app around the story and narrate the friction they meet. Findings become follow-up issues.
+8. Feedback and close. The PM reports (`report-to-stakeholder`) and demos the features at the meeting; the stakeholder gives feedback on features, bugs and UX, not on issues. The PM closes a story when QA's check list passed, the beta tester ran it, and the stakeholder said nothing against it. Feedback against it goes back into the story as a new criterion or comment.
 
 Bugs and "Report problem" folders follow `report-problem`: reproduce as a failing test first, then fix through the same flow.
 
 ## Working with the stakeholder
 
-- There are no fixed-length sprints. Accepted stories merged to `master` are the release; from 0.0.1 on, each meeting that accepts stories ends with a tag.
-- A PM session is a sprint. It starts from the files (this file, the last minutes in `docs/meetings/`, the pinned `Queue` issue) and ends with a meeting in the same session: obligations checked, demo and accept/reject, escalations, minutes, and the next sprint's obligations. The next sprint starts in a new session. The agenda is in `plan-iteration`.
+- There are no fixed-length sprints. Closed stories merged to `master` are the release; from 0.0.1 on, each meeting that closes stories ends with a tag.
+- A PM session is a sprint. It starts from the files (this file, the last minutes in `docs/meetings/`, the pinned `Queue` issue) and ends with a meeting in the same session: obligations checked, demo and feedback on features and UX, escalations, minutes, and the next sprint's obligations. The next sprint starts in a new session. The agenda is in `plan-iteration`.
 - Every feature that Zed has starts with investigating Zed: its source at the pinned version and stock Zed itself. Look changes come with a screenshot next to stock Zed.
 - Between meetings the team works on its own from the ranked queue (a pinned `Queue` issue). The PM decides technical questions and product details that fit `docs/vision.md`.
 - Only these go to the stakeholder, as an issue labeled `stakeholder` with a default answer: a change to the vision or scope, spending money, anything public about the stakeholder or their employer, and anything that cannot be undone. Work continues on everything not blocked.
-- Obligations: whatever the PM says will be ready by the next meeting is either delivered or comes with a written reason and the next step. Each obligation is a list of numbered checks the stakeholder can verify in a few minutes, plus a "not included" list. The stakeholder accepts or rejects at the meeting.
+- Obligations: whatever the PM says will be ready by the next meeting is either delivered or comes with a written reason and the next step. Each obligation is a list of numbered checks the stakeholder can verify in a few minutes, plus a "not included" list. The stakeholder checks them at the meeting and gives feedback.
 - Obligations are a minimum. When something gets unblocked early, keep going and present the result at the next meeting, not the news.
-- Minutes of each meeting live in `docs/meetings/<date>.md` (local, never published): previous obligations met or missed with evidence, numbered decisions, accepted and rejected work, new obligations, open questions with defaults.
+- Minutes of each meeting live in `docs/meetings/<date>.md` (local, never published): previous obligations met or missed with evidence, numbered decisions, stories closed and follow-ups filed, new obligations, open questions with defaults.
 
 ## Handoffs and reports
 
@@ -52,7 +53,7 @@ A story is done when all of these hold:
 - the tests were written first and failed before the implementation;
 - the reviewer approved the PR and CI is green;
 - the check list is on the issue and QA followed it in the app;
-- the PASS/FAIL report is on the issue and the stakeholder accepted it.
+- the PASS/FAIL report is on the issue and the PM closed it by the rule in Workflow step 8.
 
 ## Testing rules
 
