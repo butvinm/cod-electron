@@ -9,6 +9,9 @@ import { nextPermissionMode, type PermissionMode, type SessionEvent } from '../s
 import { createQuestionForm, type QuestionForm } from './chat-question.ts';
 import { parseQuestions, DECLINED, QUESTION_TOOL, type Question } from './question-model.ts';
 
+const HANDOFF_TITLE = 'Copy the command that continues this chat in a terminal';
+const HANDOFF_WAIT = 'Wait for the turn to finish or interrupt first';
+
 type ToolItem = Extract<ChatItem, { kind: 'tool' }>;
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<string, string> = {}, ...kids: (Node | string)[]): HTMLElementTagNameMap[K] {
@@ -69,12 +72,43 @@ export function create({ workspaceId, chatApi, openHistory = () => {}, openFile 
   const session = node('span', { class: 'chat-session' }, node('span', { text: 'Session ' }), sessionId);
   session.hidden = true;
   const status = node('span', { class: 'chat-status', testid: 'chat-session-status', 'aria-live': 'polite', text: 'Ready' });
+  const handoffButton = node('button', { class: 'chat-handoff', type: 'button', text: 'Continue in Terminal' });
+  const handoffCopied = node('span', { class: 'chat-handoff-copied', 'aria-live': 'polite' });
+  let copiedTimer: ReturnType<typeof setTimeout> | undefined;
+  // While a handoff is under way another activation does nothing. The button stays enabled, so it keeps the focus.
+  let handingOff = false;
+  let handoffNote = ''; // the tooltip while another chat holds the session
+  handoffButton.addEventListener('click', () => {
+    if (handingOff) return;
+    handingOff = true;
+    handoffButton.setAttribute('aria-busy', 'true');
+    chatApi.handoff(workspaceId).finally(() => {
+      handingOff = false;
+      handoffButton.removeAttribute('aria-busy');
+    }).then(result => {
+      if (result === 'unavailable') return;
+      const elsewhere = result === 'busy-elsewhere';
+      if (!elsewhere) handoffNotice.hidden = false;
+      handoffNote = elsewhere ? 'This session is busy in another chat' : '';
+      handoffCopied.textContent = elsewhere ? handoffNote : 'Copied';
+      handoffButton.title = handoffNote || HANDOFF_TITLE;
+      clearTimeout(copiedTimer);
+      copiedTimer = setTimeout(() => {
+        handoffCopied.textContent = '';
+        handoffNote = '';
+        handoffButton.title = state.busy ? HANDOFF_WAIT : HANDOFF_TITLE;
+      }, elsewhere ? 4000 : 2000);
+    }).catch(console.error);
+  });
   // Opens the Claude session picker (Cmd-G / Ctrl-G does the same).
   const historyButton = node('button', { class: 'chat-history-button', type: 'button', 'aria-label': 'Claude session history', title: 'Claude session history' }, historyIcon());
   historyButton.addEventListener('click', () => openHistory());
-  const header = node('div', { class: 'chat-header' }, directory, session, historyButton, status);
+  const header = node('div', { class: 'chat-header', testid: 'chat-header' }, directory, session, historyButton, handoffButton, handoffCopied, status);
   const folderNotice = node('div', { class: 'chat-folder-notice', testid: 'chat-folder-notice', role: 'status' });
   folderNotice.hidden = true;
+  // Stays after a handoff until the person writes here again, so nobody types while the terminal owns the session.
+  const handoffNotice = node('div', { class: 'chat-folder-notice', testid: 'chat-handoff-notice', role: 'status', text: 'Continued in terminal. Close it there before you write here.' });
+  handoffNotice.hidden = true;
   const promptBox = node('div', { class: 'chat-permission', testid: 'chat-permission-prompt', role: 'group', 'aria-label': 'Permission request' });
   promptBox.hidden = true;
   const questionBox = node('div', { class: 'chat-question-box' });
@@ -94,7 +128,7 @@ export function create({ workspaceId, chatApi, openHistory = () => {}, openFile 
     chatApi.setMode(workspaceId, mode).catch(console.error);
   }
   const element = node('div', { class: 'claude-chat', testid: 'claude-chat', 'data-workspace-id': workspaceId },
-    header, folderNotice, transcript, promptBox, questionBox, node('div', { class: 'chat-input', testid: 'chat-composer-area' }, composer, modeSelector.element));
+    header, folderNotice, handoffNotice, transcript, promptBox, questionBox, node('div', { class: 'chat-input', testid: 'chat-composer-area' }, composer, modeSelector.element));
 
   function growComposer(): void {
     // Set through the CSSOM, because the CSP blocks inline style attributes.
@@ -428,6 +462,9 @@ export function create({ workspaceId, chatApi, openHistory = () => {}, openFile 
       session.hidden = false;
     }
     element.classList.toggle('chat-busy', state.busy);
+    handoffButton.hidden = !state.sessionId;
+    handoffButton.disabled = state.busy;
+    handoffButton.title = state.busy ? HANDOFF_WAIT : handoffNote || HANDOFF_TITLE;
     status.textContent = statusOf(state);
     modeSelector.show(state.mode);
     drawPrompt();
@@ -447,6 +484,7 @@ export function create({ workspaceId, chatApi, openHistory = () => {}, openFile 
     if (!text.trim() || state.busy) return;
     composer.value = '';
     growComposer();
+    handoffNotice.hidden = true;
     apply({ type: 'user-message', text });
     transcript.scrollTop = transcript.scrollHeight;
     chatApi.send(workspaceId, text).catch((error: unknown) => {
@@ -458,6 +496,7 @@ export function create({ workspaceId, chatApi, openHistory = () => {}, openFile 
   // Fills the chat with the past turns of a stored session. They are drawn once, not event by event.
   function load(events: SessionEvent[]): void {
     for (const event of events) state = reduce(state, event);
+    handoffNotice.hidden = true;
     sync();
     transcript.scrollTop = transcript.scrollHeight;
   }

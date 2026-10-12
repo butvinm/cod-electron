@@ -105,6 +105,7 @@ const cod: CodApi = {
     mode: workspaceId => invoke('chat:mode', workspaceId),
     setMode: (workspaceId, mode) => invoke('chat:set-mode', workspaceId, mode),
     openLink: url => invoke('chat:open-link', url),
+    handoff: workspaceId => invoke('chat:handoff', workspaceId),
     resolveFiles: (workspaceId, paths) => invoke('chat:resolve-files', workspaceId, paths),
     toolFile: (workspaceId, input) => invoke('chat:tool-file', workspaceId, input),
     sessions: workspaceId => invoke('chat:sessions', workspaceId),

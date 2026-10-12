@@ -147,6 +147,9 @@ test('Chats: cwd is the first folder or home, and a new process after an interru
   assert.equal(provider.started.length, 1);
   assert.deepEqual(first.sent, ['hello', 'again']);
   chats.interrupt('w1');
+  // An interrupted process counts as live until it exits, so the next message waits for that.
+  first.alive = false;
+  first.options.onExit();
   chats.send('w1', 'after');
   assert.equal(provider.started.length, 2);
   assert.equal(provider.started[1].options.resume, 'abc');
