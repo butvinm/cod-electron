@@ -14,15 +14,15 @@ Honor `COD_USER_DATA_DIR` by setting Electron's userData path before readiness o
 
 Use these stable `data-testid` values on the real UI:
 
-| Selector            | Required meaning                                                                             |
-| ------------------- | -------------------------------------------------------------------------------------------- |
-| cod-window          | Visible application shell with the window background color                                   |
-| workspace-tab-bar   | Workspace tab bar with its own background color                                              |
-| workspace-tab       | Each tab, with role=tab, aria-selected=true or false and a stable nonempty data-workspace-id |
-| workspace-tab-label | Tab name only, inside each workspace-tab                                                     |
-| workspace-add       | The visible plus button in the tab bar, with an accessible name                              |
-| workspace-close     | Close button inside each workspace-tab, with an accessible name                              |
-| workspace-area      | The single visible active workspace area, with matching data-workspace-id                    |
+| Selector | Required meaning |
+| --- | --- |
+| cod-window | Visible application shell with the window background color |
+| workspace-tab-bar | Workspace tab bar with its own background color |
+| workspace-tab | Each tab, with role=tab, aria-selected=true or false and a stable nonempty data-workspace-id |
+| workspace-tab-label | Tab name only, inside each workspace-tab |
+| workspace-add | The visible plus button in the tab bar, with an accessible name |
+| workspace-close | Close button inside each workspace-tab, with an accessible name |
+| workspace-area | The single visible active workspace area, with matching data-workspace-id |
 
 A replacement for the last closed workspace must have a new identity. The tests do not prescribe its name, neighbour preference or wraparound switching. Initial workspaces are named Workspace 1, Workspace 2 and Workspace 3. The workspace area has no text or content in this story.
 
@@ -30,24 +30,24 @@ A replacement for the last closed workspace must have a new identity. The tests 
 
 List these in the implementation PR:
 
-| Action                                                 | macOS           | Linux            |
-| ------------------------------------------------------ | --------------- | ---------------- |
-| New workspace (AC2 exception for Zed's new-window key) | Cmd+Shift+N     | Ctrl+Shift+N     |
-| Next workspace                                         | Cmd+Alt+Shift+J | Ctrl+Alt+Shift+J |
-| Previous workspace                                     | Cmd+Alt+Shift+K | Ctrl+Alt+Shift+K |
-| Close workspace                                        | Cmd+Alt+Shift+Q | Ctrl+Alt+Shift+Q |
+| Action | macOS | Linux |
+| --- | --- | --- |
+| New workspace (AC2 exception for Zed's new-window key) | Cmd+Shift+N | Ctrl+Shift+N |
+| Next workspace | Cmd+Alt+Shift+J | Ctrl+Alt+Shift+J |
+| Previous workspace | Cmd+Alt+Shift+K | Ctrl+Alt+Shift+K |
+| Close workspace | Cmd+Alt+Shift+Q | Ctrl+Alt+Shift+Q |
 
 The next and previous shortcuts have no binding or chord-prefix collision in either pinned Zed keymap. The close shortcut also has no collision. No test-only command API is needed.
 
 ## Criteria and evidence
 
-| AC  | Automated scenario                                                                                                                 |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| AC1 | Clean isolated launch, one empty workspace within 3000 ms, One Dark computed colors, two-tab screenshot for the PM's look check    |
-| AC2 | Mouse plus and keyboard add, ordered names, new tab active, one window                                                             |
-| AC3 | Both Zed maps checked for collisions, mouse switching and next/previous keys, visible area identity follows active tab             |
+| AC | Automated scenario |
+| --- | --- |
+| AC1 | Clean isolated launch, one empty workspace within 3000 ms, One Dark computed colors, two-tab screenshot for the PM's look check |
+| AC2 | Mouse plus and keyboard add, ordered names, new tab active, one window |
+| AC3 | Both Zed maps checked for collisions, mouse switching and next/previous keys, visible area identity follows active tab |
 | AC4 | Mouse close in the middle, keyboard close at the end, neighbour selected, both last-tab close paths create a fresh empty workspace |
-| AC5 | Real Electron smoke scenario in the same suite; the PR workflow runs all scenarios on ubuntu-latest under Xvfb                     |
+| AC5 | Real Electron smoke scenario in the same suite; the PR workflow runs all scenarios on ubuntu-latest under Xvfb |
 
 AC5 needs a green Linux workflow run; the smoke scenario alone does not prove it. The visual comparison to stock Zed also needs the PM's review of the screenshot. Playwright writes videos and failure screenshots, and attaches the two-tab screenshot on successful AC1 execution. Video output is local evidence, not a validated stakeholder clip.
 
@@ -109,26 +109,26 @@ The spec's automatic fixture copies invented project folders and runs real git i
 
 ## Additional data-testid selectors
 
-| Selector             | Required meaning                                                                                                     |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| project-panel        | The active workspace's focusable project panel; hidden or absent when closed                                         |
-| project-add-folder   | Visible, keyboard-reachable add-folder button with an accessible name, inside the panel                              |
-| project-entry        | Each visible tree row, including roots, with role=treeitem, aria-selected=true or false, and absolute data-path      |
-| project-root         | A wrapper for each root, or an ancestor around its root row, with absolute data-path; contains its project-entry row |
-| project-entry-label  | Filename or root basename only, inside each project-entry                                                            |
-| project-entry-toggle | Accessible expand/collapse button inside directory rows; mouse click toggles the directory                           |
+| Selector | Required meaning |
+| --- | --- |
+| project-panel | The active workspace's focusable project panel; hidden or absent when closed |
+| project-add-folder | Visible, keyboard-reachable add-folder button with an accessible name, inside the panel |
+| project-entry | Each visible tree row, including roots, with role=treeitem, aria-selected=true or false, and absolute data-path |
+| project-root | A wrapper for each root, or an ancestor around its root row, with absolute data-path; contains its project-entry row |
+| project-entry-label | Filename or root basename only, inside each project-entry |
+| project-entry-toggle | Accessible expand/collapse button inside directory rows; mouse click toggles the directory |
 
 Directory and root rows have aria-expanded=true or false. Exactly one row is selected once navigation begins. Focus may be on the panel or a descendant. Collapsed descendants must be hidden or absent. Selectors are scoped to the active panel, so another workspace's hidden tree cannot satisfy the assertions. Root wrappers must not also carry project-entry when they contain descendant rows; otherwise label queries would count descendants twice.
 
 ## Coverage and expected failures
 
-| AC  | Scenario                                                                                                                                                                         |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AC | Scenario |
+| --- | --- |
 | AC1 | Button invokes scripted picker twice to add two roots; a new workspace starts without them; multi-select adds both to that workspace; one Electron window; screenshot for the PM |
-| AC2 | Closed startup, focus key reveals and focuses, dock key closes/reopens, focus key reopens                                                                                        |
-| AC3 | Up/Down selection; keyboard and mouse directory expansion/collapse; Enter and mouse file activation; passive log checks path, workspace identity and request count               |
-| AC4 | Directories first, case-insensitive natural order, visible dotfiles and gitignored file, real .git excluded                                                                      |
-| AC5 | Two different workspace trees, expanded directories and selected files survive previous/next workspace switching                                                                 |
+| AC2 | Closed startup, focus key reveals and focuses, dock key closes/reopens, focus key reopens |
+| AC3 | Up/Down selection; keyboard and mouse directory expansion/collapse; Enter and mouse file activation; passive log checks path, workspace identity and request count |
+| AC4 | Directories first, case-insensitive natural order, visible dotfiles and gitignored file, real .git excluded |
+| AC5 | Two different workspace trees, expanded directories and selected files survive previous/next workspace switching |
 
 Every scenario first invokes the project-panel focus key and expects the panel to be visible. With story #3 implemented and story #4 missing, the intended failure is `Story #4 project panel is missing: the focus key must show the real project panel`, followed by the visibility assertion. This is an expected failure description, not a recorded test result. Until story #3 app code is available in this checkout, the inherited harness will fail at its missing-main assertion instead; that is a prerequisite failure and does not establish story #4's expected red baseline.
 
@@ -155,11 +155,11 @@ Story: #6 - Fuzzy file finder across the workspace. The offline issue source is 
 
 The [pinned keymaps and provenance](../fixtures/zed-keymaps/README.md) establish these defaults:
 
-| Action                           | macOS evidence                                                                                                                                      | Linux evidence                                                                                                                                       |
-| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Open finder                      | [default-macos.json:756](../fixtures/zed-keymaps/default-macos.json#L756), `cmd-p`: `file_finder::Toggle`                                           | [default-linux.json:702](../fixtures/zed-keymaps/default-linux.json#L702), `ctrl-p`: `file_finder::Toggle`                                           |
-| Next / previous result           | [default-macos.json:17-20](../fixtures/zed-keymaps/default-macos.json#L17), `down` / `up`: `menu::SelectNext` / `menu::SelectPrevious`              | [default-linux.json:13-16](../fixtures/zed-keymaps/default-linux.json#L13), same actions                                                             |
-| Confirm / cancel                 | [default-macos.json:21-27](../fixtures/zed-keymaps/default-macos.json#L21), `enter` / `escape`: `menu::Confirm` / `menu::Cancel`                    | [default-linux.json:17-21](../fixtures/zed-keymaps/default-linux.json#L17), same actions                                                             |
+| Action | macOS evidence | Linux evidence |
+| --- | --- | --- |
+| Open finder | [default-macos.json:756](../fixtures/zed-keymaps/default-macos.json#L756), `cmd-p`: `file_finder::Toggle` | [default-linux.json:702](../fixtures/zed-keymaps/default-linux.json#L702), `ctrl-p`: `file_finder::Toggle` |
+| Next / previous result | [default-macos.json:17-20](../fixtures/zed-keymaps/default-macos.json#L17), `down` / `up`: `menu::SelectNext` / `menu::SelectPrevious` | [default-linux.json:13-16](../fixtures/zed-keymaps/default-linux.json#L13), same actions |
+| Confirm / cancel | [default-macos.json:21-27](../fixtures/zed-keymaps/default-macos.json#L21), `enter` / `escape`: `menu::Confirm` / `menu::Cancel` | [default-linux.json:17-21](../fixtures/zed-keymaps/default-linux.json#L17), same actions |
 | Toggle include ignored in finder | [default-macos.json:1312-1315](../fixtures/zed-keymaps/default-macos.json#L1312), FileFinder context, `cmd-shift-i`: `search::ToggleIncludeIgnored` | [default-linux.json:1258-1261](../fixtures/zed-keymaps/default-linux.json#L1258), FileFinder context, `ctrl-shift-i`: `search::ToggleIncludeIgnored` |
 
 AC1's Cmd+P is tested as Ctrl+P on Linux to follow the pinned platform default. The include-ignored action proves a binding exists; it does not prove its initial state. The tests enforce the story's stated default of excluding ignored files without invoking that toggle.
@@ -176,26 +176,26 @@ An automatic fixture copies `orchard` and `harbor` for AC1-AC3. AC4 generates it
 
 Existing workspace and project-panel selectors retain their story #3 and #4 meanings. Add these selectors to the real UI:
 
-| Selector           | Required meaning                                                                                                                                                                                                        |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| file-finder        | The single visible finder overlay for the active workspace; hidden or absent when closed                                                                                                                                |
-| file-finder-query  | Focused text input inside the finder; keep this DOM element stable during query updates                                                                                                                                 |
-| file-finder-result | One displayed file row, with role=option, aria-selected=true or false, and absolute data-path                                                                                                                           |
-| file-finder-name   | Basename text inside each result row                                                                                                                                                                                    |
-| file-finder-path   | Full root-relative path including basename inside each result row, using `/` separators                                                                                                                                 |
-| file-finder-match  | One or more spans containing only matched characters, in path order; combined text equals the query for the tested matches, with visible color, background, weight or text-decoration emphasis compared with the parent |
+| Selector | Required meaning |
+| --- | --- |
+| file-finder | The single visible finder overlay for the active workspace; hidden or absent when closed |
+| file-finder-query | Focused text input inside the finder; keep this DOM element stable during query updates |
+| file-finder-result | One displayed file row, with role=option, aria-selected=true or false, and absolute data-path |
+| file-finder-name | Basename text inside each result row |
+| file-finder-path | Full root-relative path including basename inside each result row, using `/` separators |
+| file-finder-match | One or more spans containing only matched characters, in path order; combined text equals the query for the tested matches, with visible color, background, weight or text-decoration emphasis compared with the parent |
 
 Render each matched character once for highlight assertions, even when the basename and path both contain it. Exactly one result is selected when matches exist, initially the first result. Up/Down change that selection while retaining query focus. Enter and clicking a row activate its absolute path and close the finder. Escape closes the finder and restores the exact previous focused control. These are DOM and behavior contracts for the tests, not a new test-only UI.
 
 ## Criteria, expected failure and timing evidence
 
-| AC  | Test in c1-file-finder.spec.ts                                                 | Coverage                                                                                                                                                       |
-| --- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| AC1 | Cmd+P opens the finder and Escape restores the previous focus                  | Empty workspace and two-root workspace; focus returns to the tab or add-folder control                                                                         |
-| AC2 | fuzzy path matches span active roots with names, relative paths and highlights | Noncontiguous `fst` matches in both roots, path-specific `afst` filtering, no results from another workspace, screenshot attachment                            |
-| AC3 | Up/Down select results and Enter or a click dispatches the chosen file         | Selection changes and reverses, no navigation requests, exact keyboard and mouse open requests                                                                 |
-| AC4 | .gitignore rules exclude files and directories and .git is never listed        | Positive control, negation rule, ignored file, ignored directory content and Git sentinel under the same query                                                 |
-| AC5 | first matching results render within 200 ms of a keystroke in 20,000 files     | First `q` keystroke after opening, renderer-clock timing to a visible animation frame with the unique matching row, filename and path; JSON latency attachment |
+| AC | Test in c1-file-finder.spec.ts | Coverage |
+| --- | --- | --- |
+| AC1 | Cmd+P opens the finder and Escape restores the previous focus | Empty workspace and two-root workspace; focus returns to the tab or add-folder control |
+| AC2 | fuzzy path matches span active roots with names, relative paths and highlights | Noncontiguous `fst` matches in both roots, path-specific `afst` filtering, no results from another workspace, screenshot attachment |
+| AC3 | Up/Down select results and Enter or a click dispatches the chosen file | Selection changes and reverses, no navigation requests, exact keyboard and mouse open requests |
+| AC4 | .gitignore rules exclude files and directories and .git is never listed | Positive control, negation rule, ignored file, ignored directory content and Git sentinel under the same query |
+| AC5 | first matching results render within 200 ms of a keystroke in 20,000 files | First `q` keystroke after opening, renderer-clock timing to a visible animation frame with the unique matching row, filename and path; JSON latency attachment |
 
 Each scenario first opens the finder in the empty workspace. The intended first failure is `Story #6 file finder is missing: Cmd+P/Ctrl+P must show the real finder`, followed by Playwright's visibility assertion for `file-finder`. This checks the missing story #6 feature before attempting story #4 setup. Once the finder exists, the project panel and its hooks must be implemented for the remaining assertions. The current checkout contains story #3 app code but neither the project panel nor finder. These expected failures have not been measured.
 
@@ -242,15 +242,15 @@ These are intended failure messages, not measured output.
 
 ## Additional data-testid selectors
 
-| Selector                 | Required meaning                                                                                                                                   |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| editor-tab               | Each visible active-workspace editor tab, with role=tab, aria-selected=true or false, and absolute data-path                                       |
-| editor-tab-label         | Basename only inside each editor-tab                                                                                                               |
-| editor-surface           | Active editor background surface inside workspace-area                                                                                             |
-| editor-content           | The active editable content node inside workspace-area; focusable; innerText contains source lines without gutters, labels or placeholder text     |
-| editor-syntax-token      | Actual highlighted source text inside editor-content; data-syntax-token names its category in the pinned One Dark syntax map                       |
+| Selector | Required meaning |
+| --- | --- |
+| editor-tab | Each visible active-workspace editor tab, with role=tab, aria-selected=true or false, and absolute data-path |
+| editor-tab-label | Basename only inside each editor-tab |
+| editor-surface | Active editor background surface inside workspace-area |
+| editor-content | The active editable content node inside workspace-area; focusable; innerText contains source lines without gutters, labels or placeholder text |
+| editor-syntax-token | Actual highlighted source text inside editor-content; data-syntax-token names its category in the pinned One Dark syntax map |
 | editor-unsaved-indicator | Visible modified-state indicator inside the relevant editor-tab, hidden or absent for clean buffers; its exact appearance awaits the Zed reference |
-| editor-save-prompt       | Proposed real close-confirmation dialog, with keyboard-reachable Save, Discard and Cancel buttons; exact Zed/native parity awaits the reference    |
+| editor-save-prompt | Proposed real close-confirmation dialog, with keyboard-reachable Save, Discard and Cancel buttons; exact Zed/native parity awaits the reference |
 
 Only the active workspace's editor tabs and active buffer belong in the visible workspace-area.
 Exactly one editor tab is selected when files are open.
@@ -262,13 +262,13 @@ The save-prompt contract is provisional pending the offline reference question; 
 
 ## Coverage and unresolved parity
 
-| AC  | Automated scenario                                                                                                                                                                                          |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| AC1 | Open all seven sample languages; verify source text, tab label, editor background and foreground and at least two distinct syntax colors from the pinned One Dark theme; attach TypeScript screenshot       |
-| AC2 | Type, undo/redo, Shift with all four arrows, double-click word selection, copy/cut/paste, select all, line moves up/down and TypeScript comment toggle                                                      |
-| AC3 | Clean and modified indicator states, unchanged disk before save, exact real disk contents after save, indicator cleared                                                                                     |
+| AC | Automated scenario |
+| --- | --- |
+| AC1 | Open all seven sample languages; verify source text, tab label, editor background and foreground and at least two distinct syntax colors from the pinned One Dark theme; attach TypeScript screenshot |
+| AC2 | Type, undo/redo, Shift with all four arrows, double-click word selection, copy/cut/paste, select all, line moves up/down and TypeScript comment toggle |
+| AC3 | Clean and modified indicator states, unchanged disk before save, exact real disk contents after save, indicator cleared |
 | AC4 | Existing-file focus without duplicate tab, close clean active tab, keyboard Cancel preserves draft, Discard preserves disk and loses draft, Save writes disk and closes; reopen confirms persisted contents |
-| AC5 | Two workspaces with different tab sets; switch twice each way; restore active file and drafts including an inactive tab's edits; disk stays unchanged                                                       |
+| AC5 | Two workspaces with different tab sets; switch twice each way; restore active file and drafts including an inactive tab's edits; disk stays unchanged |
 
 Pinned colors, binding actions, versioned source URLs and open questions are recorded in [the story #5 Zed reference](../fixtures/zed-editor/README.md).
 The offline settings pin does not contain a verified default buffer font size, so that part of AC1 has no assertion yet.
@@ -306,31 +306,31 @@ Use print mode, `--input-format stream-json`, `--output-format stream-json`, `--
 
 Selectors below live under the active `workspace-area`. Inactive workspaces must keep their own transcripts. The tests focus the accessible composer and send keyboard events; tool summaries must also be reachable by Tab.
 
-| data-testid            | Meaning                                                                                                           |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| claude-chat            | Visible chat pane for the active workspace                                                                        |
-| chat-user-message      | One user transcript entry, preserving submitted newlines                                                          |
-| chat-assistant-message | One assistant reply, with data-state=streaming, complete or interrupted; text contains only reply text            |
-| chat-tool-call         | One tool block with a button whose accessible name includes tool name and target, and aria-expanded=true or false |
-| chat-tool-input        | Expanded tool input, hidden or absent while collapsed                                                             |
-| chat-tool-output       | Expanded tool output, hidden or absent while collapsed                                                            |
-| chat-interrupted       | Visible interruption marker, separate from assistant text                                                         |
-| chat-working-directory | Visible working directory description; no-folder case includes home path and the word home                        |
-| chat-session-id        | Native UUID only as visible text, without a label prefix                                                          |
-| chat-error             | Plain missing-CLI/install or logged-out/claude auth login guidance                                                |
+| data-testid | Meaning |
+| --- | --- |
+| claude-chat | Visible chat pane for the active workspace |
+| chat-user-message | One user transcript entry, preserving submitted newlines |
+| chat-assistant-message | One assistant reply, with data-state=streaming, complete or interrupted; text contains only reply text |
+| chat-tool-call | One tool block with a button whose accessible name includes tool name and target, and aria-expanded=true or false |
+| chat-tool-input | Expanded tool input, hidden or absent while collapsed |
+| chat-tool-output | Expanded tool output, hidden or absent while collapsed |
+| chat-interrupted | Visible interruption marker, separate from assistant text |
+| chat-working-directory | Visible working directory description; no-folder case includes home path and the word home |
+| chat-session-id | Native UUID only as visible text, without a label prefix |
+| chat-error | Plain missing-CLI/install or logged-out/claude auth login guidance |
 
 The composer has textbox role and accessible name `Message Claude`; it needs no test ID. Enter submits and Shift+Enter inserts a newline. Esc from the composer interrupts the active turn. AC2 covers keyboard expansion/collapse and a click expansion variant, and attaches an expanded-tool screenshot for the PM's comparison with stock Zed. That screenshot is not a completed visual verdict or a validated clip.
 
 ## Criteria and dependencies
 
-| AC  | Automated scenario                                                                                                                                       |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AC | Automated scenario |
+| --- | --- |
 | AC1 | Newline/send, partial text visible before fake releases final text, completed transcript, fresh chat in another workspace, return to original transcript |
-| AC2 | Collapsed Read/notes.txt block, Tab reachability, Enter expansion with input/output, collapse and click expansion                                        |
-| AC3 | Held-open reply, Esc really stops the process, visible interrupted state, next message resumes identical session ID with retained history                |
-| AC4 | No-folder launch cwd is the real user's home, with visible explanation. First-folder case is blocked by story #4 below.                                  |
-| AC5 | Three variants: streaming flags and no bare/token variables, missing executable install guidance, authentication result guidance                         |
-| AC6 | Displayed native UUID, independent second CLI process with --resume using persisted history                                                              |
+| AC2 | Collapsed Read/notes.txt block, Tab reachability, Enter expansion with input/output, collapse and click expansion |
+| AC3 | Held-open reply, Esc really stops the process, visible interrupted state, next message resumes identical session ID with retained history |
+| AC4 | No-folder launch cwd is the real user's home, with visible explanation. First-folder case is blocked by story #4 below. |
+| AC5 | Three variants: streaming flags and no bare/token variables, missing executable install guidance, authentication result guidance |
+| AC6 | Displayed native UUID, independent second CLI process with --resume using persisted history |
 
 Story #4 is still in review. This checkout's README has no `COD_TEST_PICK_FOLDERS` contract and the app has no folder-picker implementation. AC4's first-folder requirement remains a dependency, not a skip, PASS or a replacement with injected internal state. QA must add a keyboard-driven picker test with two temporary folders through story #4's documented hook when it lands, and assert the fake starts in the first one. Do not claim full AC4 coverage until then.
 
