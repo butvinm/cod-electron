@@ -12,4 +12,8 @@ Cod is a personal tool developed in the open. A human stakeholder sets prioritie
 
 ## License
 
-MIT, see [LICENSE](LICENSE).
+Copyright (C) 2026 Mikhail Butvin.
+
+Cod is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. See [LICENSE](LICENSE).
+
+Earlier versions, up to the commit that changed this section, were released under the MIT License.
