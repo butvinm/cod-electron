@@ -25,6 +25,28 @@ function setup(options?: EditorFilesOptions) {
 const cleanup = ({ base }: { base: string }) => fs.rmSync(base, { recursive: true });
 const plain = (text: string) => ({ text, eol: 'lf' as const, bom: false });
 
+test('a direct read of an outside path never reaches the file system', () => {
+  const s = setup();
+  const touched: string[] = [];
+  const originals = { realpathSync: fs.realpathSync, statSync: fs.statSync, openSync: fs.openSync, lstatSync: fs.lstatSync };
+  try {
+    for (const name of Object.keys(originals) as (keyof typeof originals)[]) {
+      (fs as unknown as Record<string, unknown>)[name] = (target: unknown, ...rest: unknown[]) => {
+        touched.push(String(target));
+        return (originals[name] as (...args: unknown[]) => unknown)(target, ...rest);
+      };
+    }
+    assert.throws(() => s.files.read('ws-1', s.outside), /Not inside/);
+    assert.throws(() => s.files.read('ws-1', `${s.root}/../outside.txt`), /Not inside/);
+    assert.throws(() => s.files.read('ws-1', '/elsewhere/not-here.txt'), /Not inside/);
+    assert.deepEqual(touched.filter(target => !target.startsWith(s.root)), []);
+    assert.throws(() => s.files.read('ws-1', path.join(s.root, 'link.txt')), /Not inside/);
+  } finally {
+    Object.assign(fs, originals);
+    cleanup(s);
+  }
+});
+
 test('reads and writes a file inside the workspace', () => {
   const s = setup();
   assert.deepEqual(s.files.read('ws-1', s.file), { text: 'hello\n', eol: 'lf', bom: false });
