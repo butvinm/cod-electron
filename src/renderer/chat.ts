@@ -182,12 +182,29 @@ export function create({ workspaceId, chatApi, openHistory = () => {} }: ChatOpt
     return block;
   }
 
+  // A declined question card: one collapsed line, the button opens the questions that were asked.
+  function buildDeclined(item: Extract<ChatItem, { kind: 'declined' }>): HTMLElement {
+    const toggle = node('button', { class: 'chat-tool-summary', type: 'button', 'aria-expanded': 'false' },
+      node('span', { class: 'chat-tool-chevron', 'aria-hidden': 'true' }), node('span', { class: 'chat-tool-name', text: 'Declined' }));
+    const rows = item.questions.map(question => node('div', { class: 'chat-question-answer' }, node('span', { class: 'chat-question-asked', text: question.question })));
+    const body = node('div', { class: 'chat-question-detail' }, ...rows);
+    body.hidden = true;
+    const block = node('div', { class: 'chat-tool chat-question-history', testid: 'chat-question-history' }, toggle, body);
+    toggle.addEventListener('click', () => {
+      const open = toggle.getAttribute('aria-expanded') !== 'true';
+      toggle.setAttribute('aria-expanded', String(open));
+      body.hidden = !open;
+    });
+    return block;
+  }
+
   function build(item: ChatItem): HTMLElement {
     switch (item.kind) {
       case 'user': return node('div', { class: 'chat-user', testid: 'chat-user-message', text: item.text });
       case 'assistant': return node('div', { class: 'chat-assistant', testid: 'chat-assistant-message' });
       case 'tool': return buildTool(item);
       case 'questions': return buildQuestions(item);
+      case 'declined': return buildDeclined(item);
       case 'interrupted': return node('div', { class: 'chat-note', testid: 'chat-interrupted', text: 'Interrupted by you' });
       default: return node('div', { class: 'chat-error', testid: 'chat-error', role: 'alert', text: item.message });
     }
@@ -277,7 +294,8 @@ export function create({ workspaceId, chatApi, openHistory = () => {} }: ChatOpt
     const id = shownId;
     if (id === null) return;
     chatApi.permission(workspaceId, id, { allow: false, scope: 'once', message: DECLINED }).catch(console.error);
-    apply({ type: 'permission-answered', id });
+    const questions = state.permission?.tool === QUESTION_TOOL ? parseQuestions(state.permission.input) : null;
+    apply(questions ? { type: 'questions-declined', id, questions } : { type: 'permission-answered', id });
   }
 
   function drawPrompt(): void {
@@ -316,14 +334,18 @@ export function create({ workspaceId, chatApi, openHistory = () => {} }: ChatOpt
     }
     // A prompt takes the focus unless the person is working somewhere else.
     const active = document.activeElement;
-    if (!active || active === document.body || element.contains(active)) {
+    // The mode selector and its menu keep the focus, so a key meant for them never answers the request.
+    const inModeSelector = active !== null && modeSelector.element.contains(active);
+    if (!inModeSelector && (!active || active === document.body || element.contains(active))) {
       if (opened) opened.focusFirst(); else choices[0].focus();
     }
   }
 
   // Focus entering the chat (composer, pane) while a prompt waits goes to the prompt, so Enter never reaches the busy composer.
+  // The permission mode selector and its menu keep the focus: a key meant for them must never reach a choice such as Allow once.
   element.addEventListener('focusin', event => {
-    if (state.permission && !(event.target instanceof Node && (promptBox.contains(event.target) || questionBox.contains(event.target)))) focusPrompt();
+    const target = event.target;
+    if (state.permission && !(target instanceof Node && (promptBox.contains(target) || questionBox.contains(target) || modeSelector.element.contains(target)))) focusPrompt();
   });
 
   promptBox.addEventListener('keydown', event => {

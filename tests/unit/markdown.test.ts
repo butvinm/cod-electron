@@ -15,7 +15,7 @@ test('referenceTargets finds definitions inside quotes and list items', () => {
 
 test('fencedCode keeps blank lines at the end of a fence', () => {
   assert.deepEqual(fencedCode('```\na\n\n```\n'), [{ language: '', code: 'a\n\n' }]);
-  assert.deepEqual(fencedCode('```\n\n```\n'), [{ language: '', code: '\n\n' }]);
+  assert.deepEqual(fencedCode('```\n\n```\n'), [{ language: '', code: '\n' }]);
   assert.deepEqual(fencedCode('- i\n  ```\n  a\n\n  ```\n'), [{ language: '', code: 'a\n\n' }]);
 });
 
