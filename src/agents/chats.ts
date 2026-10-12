@@ -213,7 +213,7 @@ export class Chats {
     if (!chat) return Promise.resolve();
     chat.discarded = true;
     // A process ended by Continue in Terminal may still be shutting down: wait for it too.
-    if (!chat.session) return Promise.resolve(chat.closing);
+    if (!chat.session) return Promise.resolve(chat.closing ?? undefined);
     // Detach first, so late events of the old process never reach the new chat.
     const session = chat.session;
     chat.session = null;
