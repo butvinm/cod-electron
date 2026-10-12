@@ -4,13 +4,13 @@ Cod is a desktop workspace for agent-driven development (Electron, Linux first, 
 
 ## Roles
 
-| Role         | Who                                               | Owns                                                         | Never                                                       |
-| ------------ | ------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------- |
-| Stakeholder  | the human                                         | priorities, acceptance, daily use                            | does QA or debugging for the team                           |
-| PM / Analyst | main Claude Code session                          | backlog, stories, the queue, reports to the stakeholder      | writes app code or tests; it delegates and only spot-checks |
-| QA           | Codex (`.claude/agents/qa.md`)                    | acceptance tests, test runs, check lists, PASS/FAIL verdicts | edits app code                                              |
-| Developer    | Claude subagent (`.claude/agents/developer.md`)   | implementation of one story per pull request                 | weakens, skips or deletes acceptance tests                  |
-| Reviewer     | separate Codex run (`.claude/agents/reviewer.md`) | review of each PR diff against its story                     | edits the branch under review                               |
+| Role         | Who                                                                   | Owns                                                         | Never                                                       |
+| ------------ | --------------------------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------- |
+| Stakeholder  | the human                                                             | priorities, acceptance, daily use                            | does QA or debugging for the team                           |
+| PM / Analyst | main Claude Code session                                              | backlog, stories, the queue, reports to the stakeholder      | writes app code or tests; it delegates and only spot-checks |
+| QA           | Codex (`.claude/agents/qa.md`); check-list mode: Claude `qa` subagent | acceptance tests, test runs, check lists, PASS/FAIL verdicts | edits app code                                              |
+| Developer    | Claude subagent (`.claude/agents/developer.md`)                       | implementation of one story per pull request                 | weakens, skips or deletes acceptance tests                  |
+| Reviewer     | separate Codex run (`.claude/agents/reviewer.md`)                     | review of each PR diff against its story                     | edits the branch under review                               |
 
 GitHub Issues and the project board are the shared state. No agent relies on another agent's memory or chat history: everything a task needs is in the issue, the PR or the files named in the handoff.
 
@@ -75,7 +75,7 @@ Procedures live as skills in `.agents/skills/<name>/SKILL.md` (the path Codex sc
 | `review-pr`                                              | Reviewer  |
 | `report-problem`                                         | anyone    |
 
-Role definitions live in `.claude/agents/`. The PM starts the developer as a Claude subagent and QA and the reviewer as Codex runs; each role file explains how.
+Role definitions live in `.claude/agents/`. The PM starts the developer as a Claude subagent and QA and the reviewer as Codex runs, except QA's check-list mode, which runs as the Claude `qa` subagent because it needs a real Electron window; each role file explains how.
 
 ## Product rules (from the vision)
 
