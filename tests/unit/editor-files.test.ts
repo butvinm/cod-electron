@@ -176,6 +176,34 @@ test('a save keeps the file mode', () => {
   cleanup(s);
 });
 
+// A symlink inside the workspace that is pointed at the outside file right after it was first resolved.
+for (const action of ['read', 'write'] as const) {
+  test(`a symlink retargeted after it was checked is not followed on ${action}`, () => {
+    const s = setup();
+    const link = path.join(s.root, 'moving.txt');
+    fs.symlinkSync(s.file, link);
+    const original = fs.realpathSync;
+    let swapped = false;
+    (fs as unknown as Record<string, unknown>).realpathSync = (target: string, ...rest: unknown[]) => {
+      const result = (original as (...args: unknown[]) => string)(target, ...rest);
+      if (target === link && !swapped) {
+        swapped = true;
+        fs.unlinkSync(link);
+        fs.symlinkSync(s.outside, link);
+      }
+      return result;
+    };
+    try {
+      if (action === 'read') assert.equal(s.files.read('ws-1', link).text, 'hello\n');
+      else { try { s.files.write('ws-1', link, plain('changed')); } catch { /* refusing is fine too */ } }
+    } finally {
+      fs.realpathSync = original;
+    }
+    assert.equal(fs.readFileSync(s.outside, 'utf8'), 'secret');
+    cleanup(s);
+  });
+}
+
 test('a target swapped for a symlink out of the workspace is not written', () => {
   const hooks: NonNullable<EditorFilesOptions['hooks']> = {};
   const s = setup({ hooks });

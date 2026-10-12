@@ -52,16 +52,23 @@ export class Folders extends EventEmitter<{ change: [RootsChanged] }> {
   // The path is checked against the roots as written before any file system call touches it,
   // so a path outside every root is never probed.
   contains(target: unknown): boolean {
-    if (typeof target !== 'string' || !path.isAbsolute(target)) return false;
+    return this.realInside(target) !== null;
+  }
+
+  // The real path of target when it is inside a root, else null. The caller must use exactly this path
+  // afterwards and never resolve the supplied one again, so a symlink changed in between cannot lead out.
+  realInside(target: unknown): string | null {
+    if (typeof target !== 'string' || !path.isAbsolute(target)) return null;
     const lexical = path.resolve(target);
     const all = [...this.byWorkspace.values()].flat();
-    if (!all.some(root => isInside(root, lexical) || isInside(realOrNull(root) ?? root, lexical))) return false;
+    if (!all.some(root => isInside(root, lexical) || isInside(realOrNull(root) ?? root, lexical))) return null;
     const real = realOrNull(lexical);
-    if (real === null) return false;
-    return all.some(root => {
+    if (real === null) return null;
+    const inside = all.some(root => {
       const realRoot = realOrNull(root);
       return realRoot !== null && isInside(realRoot, real);
     });
+    return inside ? real : null;
   }
 
   // Extra roots of a workspace besides its folders (the chat's own folder), set by the main process.
@@ -69,8 +76,13 @@ export class Folders extends EventEmitter<{ change: [RootsChanged] }> {
 
   // True when target is inside a root of this workspace, or inside the chat's folder.
   workspaceContains(workspaceId: string, target: unknown): boolean {
+    return this.workspaceRealPath(workspaceId, target) !== null;
+  }
+
+  // The validated real path of target in this workspace (see realInside), or null.
+  workspaceRealPath(workspaceId: string, target: unknown): string | null {
     const only = new Folders();
     only.byWorkspace.set(workspaceId, [...this.list(workspaceId), ...this.extraRoots(workspaceId)]);
-    return only.contains(target);
+    return only.realInside(target);
   }
 }
