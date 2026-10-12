@@ -30,6 +30,10 @@ export interface ToolFile {
   line: number | null;
 }
 
+// copied: the command is on the clipboard. busy-elsewhere: another chat is in a turn on this session.
+// unavailable: a turn runs here or the session has no id yet.
+export type HandoffResult = 'copied' | 'busy-elsewhere' | 'unavailable';
+
 export interface RootsChanged {
   workspaceId: string;
   roots: string[];
@@ -89,7 +93,7 @@ export interface InvokeChannels {
   'chat:set-mode': { args: [workspaceId: string, mode: PermissionMode]; result: void };
   'chat:open-link': { args: [url: string]; result: void };
   // Copies the terminal command to the clipboard and ends the idle process. False when it cannot be done now.
-  'chat:handoff': { args: [workspaceId: string]; result: boolean };
+  'chat:handoff': { args: [workspaceId: string]; result: HandoffResult };
   'chat:sessions': { args: [workspaceId: string]; result: SessionSummary[] };
   // Replaces the chat with a stored CLI session of the workspace's folders. Null when it is not there.
   'chat:open-session': { args: [workspaceId: string, sessionId: string]; result: OpenedSession | null };
@@ -136,7 +140,7 @@ export interface CodApi {
     // Opens an http, https or mailto link from a reply in the system browser.
     openLink(url: string): Promise<void>;
     // Continue in Terminal: copies `cd '<folder>' && claude --resume <id>` and ends the idle process. Resolves false when a turn runs.
-    handoff(workspaceId: string): Promise<boolean>;
+    handoff(workspaceId: string): Promise<HandoffResult>;
     resolveFiles(workspaceId: string, paths: string[]): Promise<(string | null)[]>;
     toolFile(workspaceId: string, input: unknown): Promise<ToolFile | null>;
     // The Claude CLI sessions stored for the workspace's folders, newest first.

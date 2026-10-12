@@ -7,13 +7,22 @@ function permissionKey(event: { tool: string; input: unknown }): string {
   return JSON.stringify([event.tool, event.input]);
 }
 
-// A process not yet gone. Known by its Claude session id once that is known.
+// A process not yet gone (idle, busy, ending or interrupted), with the chat that owns it.
+// Known by its Claude session id once that is known. At most one process per session id may be live.
 // Chats are replaced (New Claude Chat, opening a session) but this record lives until the process exits.
 interface Live {
   id: string | null;
+  session: AgentSession;
+  owner: Chat;
   // Set when Cod ends the process on purpose. Resolves when it is gone.
   ending: Promise<void> | null;
+  exited: Promise<void>;
+  exit: () => void;
 }
+
+// What handoff and send get back when another chat is in a turn on the same session.
+export const BUSY_ELSEWHERE = 'busy-elsewhere';
+export const BUSY_ELSEWHERE_TEXT = 'This session is busy in another chat';
 
 interface Chat {
   session: AgentSession | null;
@@ -122,17 +131,36 @@ export class Chats {
   // Ends a process on purpose. Resolves when it is gone.
   _end(session: AgentSession): Promise<void> {
     const live = this.live.get(session);
-    const done = Promise.resolve(session.close()).then(() => { this.live.delete(session); });
+    const done = Promise.resolve(session.close()).then(() => this._gone(session));
     if (live) live.ending = done;
-    if (!session.alive) this.live.delete(session);
+    if (!session.alive) this._gone(session);
     return done;
   }
 
-  // Resolves when every process Cod is ending for this session id is gone. Null when there is none.
-  _gone(sessionId: string | null): Promise<void> | null {
-    if (!sessionId) return null;
-    const pending = [...this.live.values()].filter(live => live.id === sessionId && live.ending).map(live => live.ending!);
-    return pending.length ? Promise.all(pending).then(() => {}) : null;
+  _gone(session: AgentSession): void {
+    this.live.get(session)?.exit();
+    this.live.delete(session);
+  }
+
+  // One rule for the whole app: at most one live process per session id. Before chat C starts or
+  // hands off session X, every other process of X must be gone: an idle one of another chat is ended
+  // (that chat resumes later), an ending or interrupted one is waited for, and a busy one of another
+  // chat blocks C. Returns { busy } or { wait } (null when nothing is in the way).
+  _clear(sessionId: string | null, chat: Chat): { busy: boolean; wait: Promise<void> | null } {
+    const waits: Promise<void>[] = [];
+    if (sessionId) {
+      for (const live of [...this.live.values()]) {
+        if (live.id !== sessionId) continue;
+        if (live.ending) waits.push(live.ending);
+        else if (live.session.interrupting) waits.push(live.exited);
+        else if (live.owner !== chat) {
+          if (live.owner.busy) return { busy: true, wait: null };
+          live.owner.session = null;
+          waits.push(this._end(live.session));
+        }
+      }
+    }
+    return { busy: false, wait: waits.length ? Promise.all(waits).then(() => {}) : null };
   }
 
   // The first folder of a workspace may have changed.
@@ -143,10 +171,14 @@ export class Chats {
   send(workspaceId: string, text: string): void {
     const chat = this._chat(workspaceId);
     this._settle(workspaceId);
-    // A process of this session that Cod is ending must be gone before another one writes to it.
-    const waiting = this._gone(chat.sessionId);
-    if (waiting) {
-      waiting.then(() => { if (this.chats.get(workspaceId) === chat) this.send(workspaceId, text); });
+    // Another process of this session must be gone before this chat writes to it.
+    const clear = this._clear(chat.sessionId, chat);
+    if (clear.busy) {
+      this.emit(workspaceId, { type: 'error', kind: 'failed', message: BUSY_ELSEWHERE_TEXT });
+      return;
+    }
+    if (clear.wait) {
+      clear.wait.then(() => { if (this.chats.get(workspaceId) === chat) this.send(workspaceId, text); });
       return;
     }
     chat.busy = true;
@@ -180,13 +212,15 @@ export class Chats {
           if (current) this._settle(workspaceId);
         },
         onExit: () => {
-          this.live.delete(session);
+          this._gone(session);
           if (chat.session === session) { chat.session = null; chat.busy = false; }
         },
       });
       chat.session = session;
       chat.cwd = cwd;
-      live = { id: chat.sessionId, ending: null };
+      let exit = () => {};
+      const exited = new Promise<void>(resolve => { exit = resolve; });
+      live = { id: chat.sessionId, session, owner: chat, ending: null, exited, exit };
       this.live.set(session, live);
     }
     chat.session.send(text);
@@ -221,15 +255,18 @@ export class Chats {
   // Continue in Terminal: returns the command and ends the idle process, so the terminal is
   // the only writer. The next message starts a process that resumes the same session.
   // Returns null while a turn runs or before the session has an id.
+  // Returns BUSY_ELSEWHERE when another chat is in a turn on the same session.
   handoff(workspaceId: string): Promise<string | null> {
     const chat = this.chats.get(workspaceId);
     if (!chat || chat.busy || !chat.sessionId) return Promise.resolve(null);
-    const command = resumeCommand(chat.cwd ?? this._wanted(workspaceId), chat.sessionId);
+    const id = chat.sessionId;
+    const command = resumeCommand(chat.cwd ?? this._wanted(workspaceId), id);
+    if (this._clear(id, chat).busy) return Promise.resolve(BUSY_ELSEWHERE);
     const session = chat.session;
     chat.session = null;
     if (session) this._end(session);
-    // Any process of this session being ended, by this call or an earlier one, must be gone first.
-    return Promise.resolve(this._gone(chat.sessionId)).then(() => command);
+    // Every other process of this session, ended by this call or an earlier one, must be gone first.
+    return Promise.resolve(this._clear(id, chat).wait).then(() => command);
   }
 
   interrupt(workspaceId: string): void {

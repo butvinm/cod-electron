@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Chats } from '../../src/agents/chats.ts';
+import { Chats, BUSY_ELSEWHERE } from '../../src/agents/chats.ts';
 import { resumeCommand, shellQuote } from '../../src/agents/handoff.ts';
 import type { AgentProvider, AgentSession, StartOptions } from '../../src/agents/provider.ts';
 
@@ -28,7 +28,11 @@ function provider(delay = false): AgentProvider & { started: Fake[]; finish: () 
     start(options) {
       const session = {
         options, closed: 0, alive: true, interrupting: false,
-        send() {}, interrupt() {}, answerPermission() {},
+        send() {}, answerPermission() {},
+        interrupt() {
+          this.interrupting = true;
+          if (delay) waiting.push(() => { this.alive = false; options.onExit(); });
+        },
         close() {
           this.closed++;
           if (!delay) { this.alive = false; return; }
@@ -68,6 +72,78 @@ test('Chats.handoff gives the command, ends the idle process and the next send r
   assert.equal(fake.started.length, 2);
   assert.equal(fake.started[1].options.resume, 'sid');
   assert.equal(fake.started[1].options.cwd, '/proj/a');
+});
+
+test('a session opened in a second workspace: handoff there ends the idle process of the first and waits for it', async () => {
+  const fake = provider(true);
+  const chats = idleChat(fake);
+  await chats.open('w2', 'sid', '/proj/a');
+  let result: string | null | undefined;
+  const handed = chats.handoff('w2').then(value => { result = value; });
+  await tick();
+  assert.equal(fake.started[0].closed, 1, 'the idle process of the first chat is ended');
+  assert.equal(result, undefined, 'the command waits for it to exit');
+  fake.finish();
+  await handed;
+  assert.equal(result, command);
+  assert.equal(fake.started[0].alive, false);
+});
+
+test('a session opened in a second workspace: send there starts after the first workspace process exited, then the first resumes later', async () => {
+  const fake = provider(true);
+  const chats = idleChat(fake);
+  await chats.open('w2', 'sid', '/proj/a');
+  chats.send('w2', 'from w2');
+  await tick();
+  assert.equal(fake.started.length, 1, 'no second process while the first is alive');
+  fake.finish();
+  await tick();
+  assert.equal(fake.started.length, 2);
+  assert.equal(fake.started[1].options.resume, 'sid');
+  assert.equal(fake.started[0].alive, false);
+  assert.equal(fake.maxAlive(), 1);
+  // Writing in the first chat again ends the second chat's idle process and resumes there.
+  fake.started[1].options.onEvent({ type: 'turn-end' });
+  chats.send('w1', 'back in w1');
+  await tick();
+  assert.equal(fake.started.length, 2);
+  fake.finish();
+  await tick();
+  assert.equal(fake.started.length, 3);
+  assert.equal(fake.maxAlive(), 1);
+});
+
+test('a session busy in another chat blocks send and handoff with a notice', async () => {
+  const fake = provider(true);
+  const emitted: unknown[] = [];
+  const chats = new Chats({ provider: fake, folders: { list: () => ['/proj/a'] }, emit: (_id, event) => emitted.push(event), home: '/home/me' });
+  chats.send('w1', 'hi');
+  fake.started[0].options.onEvent({ type: 'session', id: 'sid' });
+  await chats.open('w2', 'sid', '/proj/a');
+  emitted.length = 0;
+  chats.send('w2', 'from w2');
+  await tick();
+  assert.equal(fake.started.length, 1);
+  assert.deepEqual(emitted, [{ type: 'error', kind: 'failed', message: 'This session is busy in another chat' }]);
+  assert.equal(fake.started[0].closed, 0);
+  assert.equal(await chats.handoff('w2'), BUSY_ELSEWHERE);
+  assert.equal(fake.started[0].closed, 0);
+});
+
+test('send right after an interrupt waits for the interrupted process to exit', async () => {
+  const fake = provider(true);
+  const chats = new Chats({ provider: fake, folders: { list: () => ['/proj/a'] }, emit: () => {}, home: '/home/me' });
+  chats.send('w1', 'hi');
+  fake.started[0].options.onEvent({ type: 'session', id: 'sid' });
+  chats.interrupt('w1');
+  chats.send('w1', 'again');
+  await tick();
+  assert.equal(fake.started.length, 1, 'the interrupted process still counts as live');
+  fake.finish();
+  await tick();
+  assert.equal(fake.started.length, 2);
+  assert.equal(fake.started[1].options.resume, 'sid');
+  assert.equal(fake.maxAlive(), 1);
 });
 
 test('handoff twice quickly returns the command only after the process is gone', async () => {

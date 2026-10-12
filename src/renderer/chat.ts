@@ -9,6 +9,9 @@ import { nextPermissionMode, type PermissionMode, type SessionEvent } from '../s
 import { createQuestionForm, type QuestionForm } from './chat-question.ts';
 import { parseQuestions, DECLINED, QUESTION_TOOL, type Question } from './question-model.ts';
 
+const HANDOFF_TITLE = 'Copy the command that continues this chat in a terminal';
+const HANDOFF_WAIT = 'Wait for the turn to finish or interrupt first';
+
 type ToolItem = Extract<ChatItem, { kind: 'tool' }>;
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<string, string> = {}, ...kids: (Node | string)[]): HTMLElementTagNameMap[K] {
@@ -74,6 +77,7 @@ export function create({ workspaceId, chatApi, openHistory = () => {}, openFile 
   let copiedTimer: ReturnType<typeof setTimeout> | undefined;
   // While a handoff is under way another activation does nothing. The button stays enabled, so it keeps the focus.
   let handingOff = false;
+  let handoffNote = ''; // the tooltip while another chat holds the session
   handoffButton.addEventListener('click', () => {
     if (handingOff) return;
     handingOff = true;
@@ -81,11 +85,18 @@ export function create({ workspaceId, chatApi, openHistory = () => {}, openFile 
     chatApi.handoff(workspaceId).finally(() => {
       handingOff = false;
       handoffButton.removeAttribute('aria-busy');
-    }).then(done => {
-      if (!done) return;
-      handoffCopied.textContent = 'Copied';
+    }).then(result => {
+      if (result === 'unavailable') return;
+      const elsewhere = result === 'busy-elsewhere';
+      handoffNote = elsewhere ? 'This session is busy in another chat' : '';
+      handoffCopied.textContent = elsewhere ? handoffNote : 'Copied';
+      handoffButton.title = handoffNote || HANDOFF_TITLE;
       clearTimeout(copiedTimer);
-      copiedTimer = setTimeout(() => { handoffCopied.textContent = ''; }, 2000);
+      copiedTimer = setTimeout(() => {
+        handoffCopied.textContent = '';
+        handoffNote = '';
+        handoffButton.title = state.busy ? HANDOFF_WAIT : HANDOFF_TITLE;
+      }, elsewhere ? 4000 : 2000);
     }).catch(console.error);
   });
   // Opens the Claude session picker (Cmd-G / Ctrl-G does the same).
@@ -449,7 +460,7 @@ export function create({ workspaceId, chatApi, openHistory = () => {}, openFile 
     element.classList.toggle('chat-busy', state.busy);
     handoffButton.hidden = !state.sessionId;
     handoffButton.disabled = state.busy;
-    handoffButton.title = state.busy ? 'Wait for the turn to finish or interrupt first' : 'Copy the command that continues this chat in a terminal';
+    handoffButton.title = state.busy ? HANDOFF_WAIT : handoffNote || HANDOFF_TITLE;
     status.textContent = statusOf(state);
     modeSelector.show(state.mode);
     drawPrompt();

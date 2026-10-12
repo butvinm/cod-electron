@@ -8,7 +8,7 @@ import { FileIndex } from './file-index.ts';
 import { EditorFiles } from './editor-files.ts';
 import { resolveMention, firstChangedLine, replacementsOf } from './chat-files.ts';
 import { createClaudeProvider } from './agents/claude.ts';
-import { Chats } from './agents/chats.ts';
+import { Chats, BUSY_ELSEWHERE } from './agents/chats.ts';
 import { listSessions, openSession } from './agents/claude-sessions.ts';
 import { readDefaultMode } from './agents/claude-settings.ts';
 import { isPermissionMode } from './shared/chat.ts';
@@ -146,9 +146,10 @@ handle('chat:permission', (workspaceId, id, answer) => {
 });
 handle('chat:handoff', async workspaceId => {
   const command = await chats.handoff(String(workspaceId));
-  if (command === null) return false;
+  if (command === null) return 'unavailable';
+  if (command === BUSY_ELSEWHERE) return 'busy-elsewhere';
   clipboard.writeText(command);
-  return true;
+  return 'copied';
 });
 handle('chat:interrupt', workspaceId => { chats.interrupt(String(workspaceId)); });
 handle('chat:mode', workspaceId => chats.mode(String(workspaceId)));
