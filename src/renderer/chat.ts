@@ -88,6 +88,7 @@ export function create({ workspaceId, chatApi, openHistory = () => {}, openFile 
     }).then(result => {
       if (result === 'unavailable') return;
       const elsewhere = result === 'busy-elsewhere';
+      if (!elsewhere) handoffNotice.hidden = false;
       handoffNote = elsewhere ? 'This session is busy in another chat' : '';
       handoffCopied.textContent = elsewhere ? handoffNote : 'Copied';
       handoffButton.title = handoffNote || HANDOFF_TITLE;
@@ -105,6 +106,9 @@ export function create({ workspaceId, chatApi, openHistory = () => {}, openFile 
   const header = node('div', { class: 'chat-header', testid: 'chat-header' }, directory, session, historyButton, handoffButton, handoffCopied, status);
   const folderNotice = node('div', { class: 'chat-folder-notice', testid: 'chat-folder-notice', role: 'status' });
   folderNotice.hidden = true;
+  // Stays after a handoff until the person writes here again, so nobody types while the terminal owns the session.
+  const handoffNotice = node('div', { class: 'chat-folder-notice', testid: 'chat-handoff-notice', role: 'status', text: 'Continued in terminal. Close it there before you write here.' });
+  handoffNotice.hidden = true;
   const promptBox = node('div', { class: 'chat-permission', testid: 'chat-permission-prompt', role: 'group', 'aria-label': 'Permission request' });
   promptBox.hidden = true;
   const questionBox = node('div', { class: 'chat-question-box' });
@@ -124,7 +128,7 @@ export function create({ workspaceId, chatApi, openHistory = () => {}, openFile 
     chatApi.setMode(workspaceId, mode).catch(console.error);
   }
   const element = node('div', { class: 'claude-chat', testid: 'claude-chat', 'data-workspace-id': workspaceId },
-    header, folderNotice, transcript, promptBox, questionBox, node('div', { class: 'chat-input', testid: 'chat-composer-area' }, composer, modeSelector.element));
+    header, folderNotice, handoffNotice, transcript, promptBox, questionBox, node('div', { class: 'chat-input', testid: 'chat-composer-area' }, composer, modeSelector.element));
 
   function growComposer(): void {
     // Set through the CSSOM, because the CSP blocks inline style attributes.
@@ -480,6 +484,7 @@ export function create({ workspaceId, chatApi, openHistory = () => {}, openFile 
     if (!text.trim() || state.busy) return;
     composer.value = '';
     growComposer();
+    handoffNotice.hidden = true;
     apply({ type: 'user-message', text });
     transcript.scrollTop = transcript.scrollHeight;
     chatApi.send(workspaceId, text).catch((error: unknown) => {
@@ -491,6 +496,7 @@ export function create({ workspaceId, chatApi, openHistory = () => {}, openFile 
   // Fills the chat with the past turns of a stored session. They are drawn once, not event by event.
   function load(events: SessionEvent[]): void {
     for (const event of events) state = reduce(state, event);
+    handoffNotice.hidden = true;
     sync();
     transcript.scrollTop = transcript.scrollHeight;
   }
