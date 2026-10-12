@@ -1,0 +1,326 @@
+{
+  "turns": [
+    [
+      {
+        "event": {
+          "type": "system",
+          "subtype": "init",
+          "session_id": "$SESSION",
+          "cwd": "$CWD",
+          "tools": [
+            "AskUserQuestion"
+          ],
+          "model": "fake-claude",
+          "permissionMode": "default",
+          "apiKeySource": "none",
+          "uuid": "$UUID"
+        }
+      },
+      {
+        "gate": "question-arrival"
+      },
+      {
+        "permission": {
+          "tool_name": "AskUserQuestion",
+          "input": {
+            "questions": [
+              {
+                "header": "Fixture 1",
+                "question": "Which size should fixture 1 use?",
+                "options": [
+                  {
+                    "label": "Small",
+                    "description": "Use the smallest fixture."
+                  },
+                  {
+                    "label": "Medium",
+                    "description": "Use the medium fixture."
+                  },
+                  {
+                    "label": "Large",
+                    "description": "Use the large fixture."
+                  },
+                  {
+                    "label": "Extra large",
+                    "description": "Use the largest fixture."
+                  }
+                ],
+                "multiSelect": false
+              }
+            ]
+          }
+        },
+        "denied": [
+          {
+            "type": "stream_event",
+            "session_id": "$SESSION",
+            "parent_tool_use_id": null,
+            "uuid": "$UUID",
+            "event": {
+              "type": "message_start",
+              "message": {
+                "id": "msg_fake",
+                "type": "message",
+                "role": "assistant",
+                "model": "fake-claude",
+                "content": [],
+                "stop_reason": null,
+                "stop_sequence": null,
+                "usage": {
+                  "input_tokens": 1,
+                  "output_tokens": 0
+                }
+              }
+            }
+          },
+          {
+            "type": "stream_event",
+            "session_id": "$SESSION",
+            "parent_tool_use_id": null,
+            "uuid": "$UUID",
+            "event": {
+              "type": "content_block_start",
+              "index": 0,
+              "content_block": {
+                "type": "text",
+                "text": ""
+              }
+            }
+          },
+          {
+            "type": "stream_event",
+            "session_id": "$SESSION",
+            "parent_tool_use_id": null,
+            "uuid": "$UUID",
+            "event": {
+              "type": "content_block_delta",
+              "index": 0,
+              "delta": {
+                "type": "text_delta",
+                "text": "Question declined: $REASON. Continuing the fixture."
+              }
+            }
+          },
+          {
+            "type": "stream_event",
+            "session_id": "$SESSION",
+            "parent_tool_use_id": null,
+            "uuid": "$UUID",
+            "event": {
+              "type": "content_block_stop",
+              "index": 0
+            }
+          },
+          {
+            "type": "stream_event",
+            "session_id": "$SESSION",
+            "parent_tool_use_id": null,
+            "uuid": "$UUID",
+            "event": {
+              "type": "message_delta",
+              "delta": {
+                "stop_reason": "end_turn",
+                "stop_sequence": null
+              },
+              "usage": {
+                "output_tokens": 5
+              }
+            }
+          },
+          {
+            "type": "stream_event",
+            "session_id": "$SESSION",
+            "parent_tool_use_id": null,
+            "uuid": "$UUID",
+            "event": {
+              "type": "message_stop"
+            }
+          },
+          {
+            "type": "assistant",
+            "session_id": "$SESSION",
+            "parent_tool_use_id": null,
+            "uuid": "$UUID",
+            "message": {
+              "id": "msg_fake",
+              "type": "message",
+              "role": "assistant",
+              "model": "fake-claude",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Question declined: $REASON. Continuing the fixture."
+                }
+              ],
+              "stop_reason": "end_turn",
+              "stop_sequence": null,
+              "usage": {
+                "input_tokens": 1,
+                "output_tokens": 5
+              }
+            }
+          },
+          {
+            "type": "result",
+            "subtype": "success",
+            "is_error": false,
+            "result": "Question declined: $REASON. Continuing the fixture.",
+            "errors": [],
+            "session_id": "$SESSION",
+            "duration_ms": 1,
+            "duration_api_ms": 1,
+            "num_turns": 1,
+            "total_cost_usd": 0,
+            "usage": {
+              "input_tokens": 1,
+              "output_tokens": 5
+            },
+            "uuid": "$UUID"
+          }
+        ]
+      },
+      {
+        "event": {
+          "type": "stream_event",
+          "session_id": "$SESSION",
+          "parent_tool_use_id": null,
+          "uuid": "$UUID",
+          "event": {
+            "type": "message_start",
+            "message": {
+              "id": "msg_fake",
+              "type": "message",
+              "role": "assistant",
+              "model": "fake-claude",
+              "content": [],
+              "stop_reason": null,
+              "stop_sequence": null,
+              "usage": {
+                "input_tokens": 1,
+                "output_tokens": 0
+              }
+            }
+          }
+        }
+      },
+      {
+        "event": {
+          "type": "stream_event",
+          "session_id": "$SESSION",
+          "parent_tool_use_id": null,
+          "uuid": "$UUID",
+          "event": {
+            "type": "content_block_start",
+            "index": 0,
+            "content_block": {
+              "type": "text",
+              "text": ""
+            }
+          }
+        }
+      },
+      {
+        "event": {
+          "type": "stream_event",
+          "session_id": "$SESSION",
+          "parent_tool_use_id": null,
+          "uuid": "$UUID",
+          "event": {
+            "type": "content_block_delta",
+            "index": 0,
+            "delta": {
+              "type": "text_delta",
+              "text": "Answers received. Continuing the fixture."
+            }
+          }
+        }
+      },
+      {
+        "event": {
+          "type": "stream_event",
+          "session_id": "$SESSION",
+          "parent_tool_use_id": null,
+          "uuid": "$UUID",
+          "event": {
+            "type": "content_block_stop",
+            "index": 0
+          }
+        }
+      },
+      {
+        "event": {
+          "type": "stream_event",
+          "session_id": "$SESSION",
+          "parent_tool_use_id": null,
+          "uuid": "$UUID",
+          "event": {
+            "type": "message_delta",
+            "delta": {
+              "stop_reason": "end_turn",
+              "stop_sequence": null
+            },
+            "usage": {
+              "output_tokens": 5
+            }
+          }
+        }
+      },
+      {
+        "event": {
+          "type": "stream_event",
+          "session_id": "$SESSION",
+          "parent_tool_use_id": null,
+          "uuid": "$UUID",
+          "event": {
+            "type": "message_stop"
+          }
+        }
+      },
+      {
+        "event": {
+          "type": "assistant",
+          "session_id": "$SESSION",
+          "parent_tool_use_id": null,
+          "uuid": "$UUID",
+          "message": {
+            "id": "msg_fake",
+            "type": "message",
+            "role": "assistant",
+            "model": "fake-claude",
+            "content": [
+              {
+                "type": "text",
+                "text": "Answers received. Continuing the fixture."
+              }
+            ],
+            "stop_reason": "end_turn",
+            "stop_sequence": null,
+            "usage": {
+              "input_tokens": 1,
+              "output_tokens": 5
+            }
+          }
+        }
+      },
+      {
+        "event": {
+          "type": "result",
+          "subtype": "success",
+          "is_error": false,
+          "result": "Answers received. Continuing the fixture.",
+          "errors": [],
+          "session_id": "$SESSION",
+          "duration_ms": 1,
+          "duration_api_ms": 1,
+          "num_turns": 1,
+          "total_cost_usd": 0,
+          "usage": {
+            "input_tokens": 1,
+            "output_tokens": 5
+          },
+          "uuid": "$UUID"
+        }
+      }
+    ]
+  ]
+}

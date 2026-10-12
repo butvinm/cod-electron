@@ -13,6 +13,7 @@ export type ChatItem =
   | { kind: 'assistant'; text: string; state: ReplyState; key: number }
   | { kind: 'tool'; toolId: string; name: string; input: unknown; output: string | null; isError: boolean; key: number }
   | { kind: 'questions'; questions: Question[]; answers: Record<string, string>; key: number }
+  | { kind: 'declined'; questions: Question[]; key: number }
   | { kind: 'interrupted'; key: number }
   | { kind: 'error'; message: string; key: number };
 
@@ -42,7 +43,9 @@ export type ChatModelEvent =
   | { type: 'user-message'; text: string }
   | { type: 'permission-answered'; id: string }
   // The person answered a question card: it leaves the queue and stays in the transcript.
-  | { type: 'questions-answered'; id: string; questions: Question[]; answers: Record<string, string> };
+  | { type: 'questions-answered'; id: string; questions: Question[]; answers: Record<string, string> }
+  // The person declined a question card with Esc: it leaves the queue and a collapsed line stays.
+  | { type: 'questions-declined'; id: string; questions: Question[] };
 
 export type TextBlock = { type: 'text' | 'code'; text: string };
 
@@ -116,6 +119,8 @@ export function reduce(state: ChatState, event: ChatModelEvent): ChatState {
     case 'questions-answered':
       return push(withQueue(state, state.permissions.filter(request => request.id !== event.id)),
         { kind: 'questions', questions: event.questions, answers: event.answers });
+    case 'questions-declined':
+      return push(withQueue(state, state.permissions.filter(request => request.id !== event.id)), { kind: 'declined', questions: event.questions });
     case 'turn-end':
       return { ...withQueue(settle(state, 'complete'), []), busy: false };
     case 'error': {
