@@ -18,7 +18,7 @@ Output: the hand-back block from `.claude/agents/reviewer.md`. You do not change
 5. Product rules:
    - Minimal UI: no new settings, toggles or panels the story did not ask for.
    - Keyboard everywhere: new controls are focusable, have shortcuts or palette commands where the story implies them, and show focus.
-   - Looks like Zed: quiet colors, dense layout, no decorative chrome. If there is a screenshot or clip, look at it.
+   - Looks like Zed: quiet colors, dense layout, no decorative chrome. If there is a screenshot, look at it.
 6. Code quality:
    - the stack in `AGENTS.md` (TypeScript in strict mode for app code and tests); any deviation is blocking unless the PM approved it in the issue;
    - clear module boundaries (UI, main-process services, agent providers); no app APIs exposed to external web pages;
