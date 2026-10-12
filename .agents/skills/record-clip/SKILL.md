@@ -14,6 +14,8 @@ Output: `artifacts/<issue>/<chapter>.mp4` (30-60 s), `artifacts/<issue>/<chapter
 - Fakes only: the fake agent provider and look-alike pages, invented data. Nothing from an employer, no real accounts, no tokens on screen, no desktop notifications from other apps.
 - Recording launches Electron, so it runs outside Codex's sandbox (see `.claude/agents/qa.md`). On macOS wrap it in `caffeinate -dimsu` so the machine does not sleep mid-recording; if it seems to hang, check `pmset -g log | tail -50` first.
 
+- Quiet mode: `tests/e2e/helpers/electron.ts` sets `COD_TEST_QUIET=1`, so test windows are hidden and the app never activates on macOS. Playwright videos and screenshots still work, but for a clip that must show a real visible window, run with `COD_TEST_VISIBLE=1` (for example `COD_TEST_VISIBLE=1 caffeinate -dimsu npx playwright test ...`). It turns quiet mode off. Clip scripts that launch Electron themselves must pass it through.
+
 ## Steps
 
 1. Write or reuse the chapter script `tests/clips/<chapter>.spec.ts`: a Playwright for Electron test that performs the flow with short pauses (`page.waitForTimeout(600)` is fine here, only here) and asserts each step's result, so the clip is also a test.
