@@ -74,6 +74,30 @@ test('Chats.handoff after opening the same session during a pending handoff stil
   assert.equal(fake.started[0].alive, false, 'the old process is gone before the second command is returned');
 });
 
+test('Chats.send right after a handoff starts the new process only after the old one exited', async () => {
+  let finish = () => {};
+  const fake = provider();
+  const start = fake.start.bind(fake);
+  fake.start = options => {
+    const session = start(options) as Fake;
+    session.close = () => new Promise<void>(resolve => { finish = () => { session.alive = false; resolve(); }; });
+    return session;
+  };
+  const chats = new Chats({ provider: fake, folders: { list: () => ['/proj/a'] }, emit: () => {}, home: '/home/me' });
+  chats.send('w1', 'hi');
+  fake.started[0].options.onEvent({ type: 'session', id: 'sid' });
+  fake.started[0].options.onEvent({ type: 'turn-end' });
+  const handed = chats.handoff('w1');
+  chats.send('w1', 'again');
+  await new Promise(resolve => setTimeout(resolve, 10));
+  assert.equal(fake.started.length, 1, 'no second process while the first is shutting down');
+  finish();
+  await handed;
+  await new Promise(resolve => setTimeout(resolve, 10));
+  assert.equal(fake.started.length, 2);
+  assert.equal(fake.started[1].options.resume, 'sid');
+});
+
 test('Chats.handoff called twice quickly returns the command only after the process is gone', async () => {
   let finish = () => {};
   const fake = provider();

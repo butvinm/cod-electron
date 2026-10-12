@@ -118,6 +118,11 @@ export class Chats {
 
   send(workspaceId: string, text: string): void {
     const chat = this._chat(workspaceId);
+    // A process ended by Continue in Terminal must be gone before another one writes to the session.
+    if (chat.closing) {
+      chat.closing.then(() => { if (this.chats.get(workspaceId) === chat) this.send(workspaceId, text); });
+      return;
+    }
     this._settle(workspaceId);
     chat.busy = true;
     if (!chat.session || !chat.session.alive || chat.session.interrupting) {
