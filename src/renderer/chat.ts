@@ -164,6 +164,8 @@ export function create({ workspaceId, chatApi, openHistory = () => {}, openFile 
       node('span', { class: 'chat-tool-chevron', 'aria-hidden': 'true' }),
       node('span', { class: 'chat-tool-name', text: item.name })];
     const link = toolFileLink(item);
+    // Ask now, while an edit may not have changed the file yet: the main process remembers the line it finds.
+    if (link && item.name !== 'Read' && item.name !== 'Write') chatApi.toolFile(workspaceId, item.input).catch(console.error);
     // The link cannot sit inside the button, so a file row keeps the file in the button's name
     // as hidden text, and the link draws it.
     summaryKids.push(' ', node('span', { class: link ? 'chat-tool-target chat-tool-name-only' : 'chat-tool-target', text: toolTarget(item.input) }));

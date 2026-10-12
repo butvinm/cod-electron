@@ -1,24 +1,36 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { isInside } from './folders.ts';
 
-// Files named in a chat. Pure helpers: the caller supplies the check that a path is inside a workspace folder.
+// Files named in a chat. The allowed roots are the chat's folder and the workspace folders.
 
-function isFile(target: string): boolean {
-  try { return fs.statSync(target).isFile(); } catch { return false; }
+export interface FsProbe {
+  realpathSync(target: string): string;
+  statSync(target: string): { isFile(): boolean };
 }
 
-// The absolute path a mention points at, or null. A relative mention is tried against the chat's
-// folder first, then each workspace folder in order. A match counts only when it is a file and
-// `inside` accepts it, so a file outside the workspace is never confirmed.
-export function resolveMention(mention: string, bases: string[], inside: (file: string) => boolean): string | null {
+// The file a path means when it is a file inside one of the roots, else null.
+// The path is checked against the roots as written first, so a path outside them never reaches the
+// file system. Then the real path must stay inside the real root, so a symlink cannot lead out.
+export function confineFile(file: string, roots: string[], probe: FsProbe = fs): string | null {
+  const lexical = path.resolve(file);
+  const root = roots.find(candidate => isInside(candidate, lexical));
+  if (root === undefined) return null;
+  try {
+    const real = probe.realpathSync(lexical);
+    if (!isInside(probe.realpathSync(root), real) || !probe.statSync(real).isFile()) return null;
+  } catch { return null; }
+  return lexical;
+}
+
+// The absolute path a mention points at, or null. A relative mention is tried against each root in
+// order (the chat's folder first). An absolute one must lie inside a root.
+export function resolveMention(mention: unknown, roots: string[], probe: FsProbe = fs): string | null {
   if (typeof mention !== 'string' || mention === '' || mention.length > 1000 || mention.includes('\0')) return null;
-  if (path.isAbsolute(mention)) {
-    const file = path.normalize(mention);
-    return isFile(file) && inside(file) ? file : null;
-  }
-  for (const base of bases) {
-    const file = path.resolve(base, mention);
-    if (isFile(file) && inside(file)) return file;
+  if (path.isAbsolute(mention)) return confineFile(mention, roots, probe);
+  for (const base of roots) {
+    const file = confineFile(path.resolve(base, mention), roots, probe);
+    if (file !== null) return file;
   }
   return null;
 }
@@ -28,20 +40,30 @@ export interface Replacement {
   new_string: string;
 }
 
-// The 1-based line of the first change an Edit or MultiEdit made (or is about to make):
-// the earliest line of any replacement. The new text is looked for first, because after the
-// edit the old text is gone. Null when none of the texts is in the file.
+function commonPrefix(a: string, b: string): number {
+  let n = 0;
+  while (n < a.length && n < b.length && a[n] === b[n]) n++;
+  return n;
+}
+
+// The 1-based line where one replacement starts to differ. Before the edit the old text is in the file:
+// its position is exact, and a deletion points at the line where the text was. After the edit the new text
+// is looked for, and the part it shares with the old text is skipped. A deletion that is already done
+// cannot be located and gives null.
+export function changedLine(text: string, edit: Replacement): number | null {
+  const skip = commonPrefix(edit.old_string, edit.new_string);
+  let at = edit.old_string === '' ? -1 : text.indexOf(edit.old_string);
+  if (at < 0 && edit.new_string !== '') at = text.indexOf(edit.new_string);
+  if (at < 0) return null;
+  return text.slice(0, at + skip).split('\n').length;
+}
+
+// The earliest line of any replacement of an Edit or MultiEdit.
 export function firstChangedLine(text: string, edits: Replacement[]): number | null {
   let best: number | null = null;
   for (const edit of edits) {
-    let at = -1;
-    for (const needle of [edit.new_string, edit.old_string]) {
-      if (needle !== '') at = text.indexOf(needle);
-      if (at >= 0) break;
-    }
-    if (at < 0) continue;
-    const line = text.slice(0, at).split('\n').length;
-    if (best === null || line < best) best = line;
+    const line = changedLine(text, edit);
+    if (line !== null && (best === null || line < best)) best = line;
   }
   return best;
 }

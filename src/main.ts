@@ -193,11 +193,20 @@ handle('project:open-file', (workspaceId, file, line, column) => {
   dispatchOpenFile(String(workspaceId), file, point(line), point(column));
 });
 
-// Files named in a chat. The answer is only ever a file inside the chat's folder or a workspace folder.
+// Files named in a chat. The allowed roots are the chat's folder (unless it is the home folder
+// of a chat without folders) and then the workspace folders. The same roots guard opening and editor reads.
+folders.extraRoots = workspaceId => {
+  const info = chats.info(workspaceId);
+  return info.home ? [] : [info.cwd];
+};
+
 function resolveChatFile(workspaceId: string, mention: unknown): string | null {
-  const bases = [chats.info(workspaceId).cwd, ...folders.list(workspaceId)];
-  return resolveMention(mention as string, bases, file => folders.workspaceContains(workspaceId, file));
+  const roots = [...new Set([...folders.extraRoots(workspaceId), ...folders.list(workspaceId)])];
+  return resolveMention(mention, roots);
 }
+
+// The line found for an edit before the file changed is kept, because afterwards the old text is gone.
+const editLines = new Map<string, number | null>();
 
 handle('chat:resolve-files', (workspaceId, paths) => {
   if (!Array.isArray(paths)) throw new Error('Paths must be a list');
@@ -210,11 +219,14 @@ handle('chat:tool-file', (workspaceId, input) => {
   if (file === null) return null;
   const edits = replacementsOf(input);
   if (edits.length === 0) return { file, line: null };
-  try {
-    return { file, line: firstChangedLine(editorFiles.read(String(workspaceId), file).text, edits) };
-  } catch {
-    return { file, line: null };
-  }
+  const key = JSON.stringify([workspaceId, file, edits]);
+  const known = editLines.get(key);
+  if (known !== undefined && known !== null) return { file, line: known };
+  let line: number | null = null;
+  try { line = firstChangedLine(editorFiles.read(String(workspaceId), file).text, edits); } catch { /* unreadable: no line */ }
+  if (editLines.size > 500) editLines.clear();
+  editLines.set(key, line);
+  return { file, line };
 });
 
 // Editor file access. Same realpath containment as project reads.
