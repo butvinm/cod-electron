@@ -5,7 +5,7 @@ description: QA procedure to write a step-by-step check list for a Cod story - n
 
 # Write a check list
 
-The stakeholder accepts a story by following its check list in the running app. It replaces video clips (stakeholder decision 2026-10-12).
+The check list lets the stakeholder try a story in the running app in a few minutes and give feedback on it. It replaces video clips (stakeholder decision 2026-10-12).
 
 Output: one comment on the issue with the check list, and a check list line in the QA hand-back.
 

@@ -5,7 +5,7 @@ description: PM procedure to report a finished Cod story to the stakeholder as a
 
 # Report to the stakeholder
 
-The stakeholder accepts work by following the check list in the app and from daily use, not from logs. Keep it short enough to read in one minute.
+The stakeholder judges features by following the check list in the app and from daily use, not from logs, and gives feedback on features and UX instead of accepting issues. Keep it short enough to read in one minute.
 
 ## Steps
 
@@ -20,7 +20,7 @@ The stakeholder accepts work by following the check list in the app and from dai
 ## Output format
 
 ```
-<Story title> (#<issue>) - ready for your acceptance | not ready
+<Story title> (#<issue>) - ready, closes unless you object | not ready
 
 | What you can now do | Result |
 | --- | --- |
