@@ -50,7 +50,10 @@ test('a file mentioned in the chat folder opens although the workspace has no fo
     await expect(page.getByTestId('workspace-area').getByRole('tab', { selected: true })).toHaveAttribute('data-path', path.join(chatFolder, 'src/a.ts'));
     await expect(page.getByTestId('workspace-area').getByTestId('editor-content')).toBeFocused();
   } finally {
+    const child = app.process();
+    const exited = new Promise<void>(resolve => child.once('exit', () => resolve()));
     await app.evaluate(({ app }) => app.exit(0)).catch(() => {});
-    rmSync(directory, { recursive: true, force: true });
+    await exited;
+    rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
 });
