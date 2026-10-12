@@ -153,7 +153,7 @@ function fencedParts(src: string, node: SyntaxNode): { language: string; code: s
   const kids = children(node);
   const info = kids.find(kid => kid.name === 'CodeInfo');
   const code = joinCodeSegments(kids.filter(kid => kid.name === 'CodeText').map(kid => src.slice(kid.from, kid.to)));
-  return { language: info ? languageName(src.slice(info.from, info.to)) : '', code: code ? `${code}\n` : '' };
+  return { language: info ? languageName(src.slice(info.from, info.to)) : '', code: code && code !== '\n' ? `${code}\n` : code };
 }
 
 // The language and text of every fenced code block in a document, however deeply nested.
