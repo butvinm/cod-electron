@@ -25,7 +25,7 @@ export const test = base.extend<{ cod: Cod }>({
       app = await _electron.launch({
         args: [root, `--user-data-dir=${profile}`],
         cwd: root,
-        env: { ...env, COD_USER_DATA_DIR: profile },
+        env: { COD_TEST_QUIET: '1', ...env, COD_USER_DATA_DIR: profile },
         timeout: 15_000,
         recordVideo: { dir: testInfo.outputPath('video') },
       });
