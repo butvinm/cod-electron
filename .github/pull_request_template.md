@@ -21,7 +21,7 @@ Acceptance tests modified: none (or list each change and why; this blocks the re
 ## Evidence
 
 - Test run: `<command>` -> <N passed, M failed>
-- Screenshot or clip: <link, or "QA records after review">
+- Screenshot: <link, or "none"; QA writes the check list after review>
 
 ## Checklist
 

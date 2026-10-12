@@ -6,6 +6,7 @@ import { RecentFolders } from './recent-folders.ts';
 import { readDir } from './project-fs.ts';
 import { FileIndex } from './file-index.ts';
 import { EditorFiles } from './editor-files.ts';
+import { resolveMention, firstChangedLine, replacementsOf } from './chat-files.ts';
 import { createClaudeProvider } from './agents/claude.ts';
 import { Chats } from './agents/chats.ts';
 import { listSessions, openSession } from './agents/claude-sessions.ts';
@@ -63,9 +64,9 @@ async function pickFolders(): Promise<string[]> {
 
 // The boundary where "open this file" leaves the panel. The editor story will handle it here.
 // COD_TEST_OPEN_REQUEST_LOG_PATH makes every request append one JSON line, for tests.
-function dispatchOpenFile(workspaceId: string, file: string): void {
+function dispatchOpenFile(workspaceId: string, file: string, line?: number, column?: number): void {
   const log = process.env.COD_TEST_OPEN_REQUEST_LOG_PATH;
-  if (log) fs.appendFileSync(log, `${JSON.stringify({ path: file, workspaceId })}\n`);
+  if (log) fs.appendFileSync(log, `${JSON.stringify({ path: file, workspaceId, ...(line === undefined ? {} : { line, column }) })}\n`);
 }
 
 const fileIndex = new FileIndex(id => folders.list(id), workspaceId => sendToPage('finder:rebuilt', workspaceId));
@@ -192,9 +193,46 @@ handle('project:read-dir', dir => {
   return readDir(dir);
 });
 
-handle('project:open-file', (workspaceId, file) => {
+handle('project:open-file', (workspaceId, file, line, column) => {
   if (typeof file !== 'string' || !folders.workspaceContains(String(workspaceId), file)) throw new Error('Not inside a workspace folder');
-  dispatchOpenFile(String(workspaceId), file);
+  const point = (value: unknown): number | undefined => (typeof value === 'number' && Number.isInteger(value) && value >= 1 ? value : undefined);
+  dispatchOpenFile(String(workspaceId), file, point(line), point(column));
+});
+
+// Files named in a chat. The allowed roots are the chat's folder (unless it is the home folder
+// of a chat without folders) and then the workspace folders. The same roots guard opening and editor reads.
+folders.extraRoots = workspaceId => {
+  const info = chats.info(workspaceId);
+  return info.home ? [] : [info.cwd];
+};
+
+function resolveChatFile(workspaceId: string, mention: unknown): string | null {
+  const roots = [...new Set([...folders.extraRoots(workspaceId), ...folders.list(workspaceId)])];
+  return resolveMention(mention, roots);
+}
+
+// The line found for an edit before the file changed is kept, because afterwards the old text is gone.
+const editLines = new Map<string, number | null>();
+
+handle('chat:resolve-files', (workspaceId, paths) => {
+  if (!Array.isArray(paths)) throw new Error('Paths must be a list');
+  return paths.slice(0, 100).map(mention => resolveChatFile(String(workspaceId), mention));
+});
+
+handle('chat:tool-file', (workspaceId, input) => {
+  const fields = input && typeof input === 'object' ? input as Record<string, unknown> : {}; // a tool input is a JSON object
+  const file = resolveChatFile(String(workspaceId), fields.file_path);
+  if (file === null) return null;
+  const edits = replacementsOf(input);
+  if (edits.length === 0) return { file, line: null };
+  const key = JSON.stringify([workspaceId, file, edits]);
+  const known = editLines.get(key);
+  if (known !== undefined && known !== null) return { file, line: known };
+  let line: number | null = null;
+  try { line = firstChangedLine(editorFiles.read(String(workspaceId), file).text, edits); } catch { /* unreadable: no line */ }
+  if (editLines.size > 500) editLines.clear();
+  editLines.set(key, line);
+  return { file, line };
 });
 
 // Editor file access. Same realpath containment as project reads.

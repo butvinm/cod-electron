@@ -166,6 +166,14 @@
   font-size: 12px;
 }
 
+/* A file row: the summary button and the file link side by side. */
+.chat-tool-head { display: flex; align-items: baseline; min-width: 0; }
+a.chat-file-link { color: #74ade8; text-decoration: underline; cursor: pointer; }
+a.chat-file-link:focus-visible { outline: 1px solid #74ade8; outline-offset: 1px; border-radius: 2px; }
+a.chat-tool-target { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Text for the button's name that the link next to it already shows. */
+.chat-tool-name-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
 .chat-tool-body { margin: 4px 0 0 16px; }
 .chat-tool-label { margin: 0 0 2px; font-size: 11px; color: var(--text-muted); }
 .chat-tool-error .chat-tool-name { color: #d07277; }

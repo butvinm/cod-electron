@@ -1,16 +1,16 @@
 ---
 name: report-to-stakeholder
-description: PM procedure to report a finished Cod story to the stakeholder as a short PASS/FAIL table with links to the issue, the PR and the clip, plus open questions, in plain language without jargon. Use when a story has a QA verdict and a clip, and for the demo at each stakeholder meeting.
+description: PM procedure to report a finished Cod story to the stakeholder as a short PASS/FAIL table with links to the issue, the PR and the step-by-step check list, plus open questions, in plain language without jargon. Use when a story has a QA verdict and a check list, and for the demo at each stakeholder meeting.
 ---
 
 # Report to the stakeholder
 
-The stakeholder accepts work from clips and daily use, not from logs. Keep it short enough to read in one minute.
+The stakeholder accepts work by following the check list in the app and from daily use, not from logs. Keep it short enough to read in one minute.
 
 ## Steps
 
-1. Gather: the issue (`gh issue view <issue>`), the PR and CI status (`gh pr view <pr>`, `gh pr checks <pr>`), the QA hand-back, the reviewer verdict and the clip link.
-2. Spot-check one criterion yourself: open its test and the clip, and confirm they match the wording of the criterion. If not, send the story back to QA instead of reporting.
+1. Gather: the issue (`gh issue view <issue>`), the PR and CI status (`gh pr view <pr>`, `gh pr checks <pr>`), the QA hand-back, the reviewer verdict and the link to the check list comment.
+2. Spot-check one criterion yourself: open its test and its check list block, and confirm they match the wording of the criterion and that the steps are clear enough to follow without help. If not, send the story back to QA instead of reporting.
 3. Rewrite each criterion as a plain sentence about what the user can now do. No file names, test names, stack traces or internal terms in the table.
 4. Mark each PASS or FAIL. A FAIL gets one plain sentence on what is missing and what happens next.
 5. Collect open questions that need the stakeholder's decision. Each one offers a default ("If I don't hear back, I will ..."), so silence never blocks the team.
@@ -27,7 +27,7 @@ The stakeholder accepts work from clips and daily use, not from logs. Keep it sh
 | Switch to the workspace that needs you with one shortcut | PASS |
 | See the needs-input sessions at the top of the list | FAIL - sorting is wrong when two sessions finish at once; fix in progress |
 
-Clip (40 s): <link>
+How to check it (about 3 min): <link to the check list comment>
 Issue: <link>  PR: <link>
 
 Questions:

@@ -55,8 +55,10 @@ export class EditorFiles {
   }
 
   resolve(workspaceId: string, file: string): string {
-    const real = realOrNull(file);
-    if (real === null || !this.folders.workspaceContains(workspaceId, real)) throw new Error('Not inside a workspace folder');
+    // workspaceRealPath checks the roots against the path as written before any file system call, then
+    // against its real path. Only that real path is used afterwards, never the supplied one again.
+    const real = this.folders.workspaceRealPath(workspaceId, file);
+    if (real === null) throw new Error('Not inside a workspace folder');
     if (!this.fs.statSync(real).isFile()) throw new Error('Not a file');
     return real;
   }

@@ -25,6 +25,28 @@ function setup(options?: EditorFilesOptions) {
 const cleanup = ({ base }: { base: string }) => fs.rmSync(base, { recursive: true });
 const plain = (text: string) => ({ text, eol: 'lf' as const, bom: false });
 
+test('a direct read of an outside path never reaches the file system', () => {
+  const s = setup();
+  const touched: string[] = [];
+  const originals = { realpathSync: fs.realpathSync, statSync: fs.statSync, openSync: fs.openSync, lstatSync: fs.lstatSync };
+  try {
+    for (const name of Object.keys(originals) as (keyof typeof originals)[]) {
+      (fs as unknown as Record<string, unknown>)[name] = (target: unknown, ...rest: unknown[]) => {
+        touched.push(String(target));
+        return (originals[name] as (...args: unknown[]) => unknown)(target, ...rest);
+      };
+    }
+    assert.throws(() => s.files.read('ws-1', s.outside), /Not inside/);
+    assert.throws(() => s.files.read('ws-1', `${s.root}/../outside.txt`), /Not inside/);
+    assert.throws(() => s.files.read('ws-1', '/elsewhere/not-here.txt'), /Not inside/);
+    assert.deepEqual(touched.filter(target => !target.startsWith(s.root)), []);
+    assert.throws(() => s.files.read('ws-1', path.join(s.root, 'link.txt')), /Not inside/);
+  } finally {
+    Object.assign(fs, originals);
+    cleanup(s);
+  }
+});
+
 test('reads and writes a file inside the workspace', () => {
   const s = setup();
   assert.deepEqual(s.files.read('ws-1', s.file), { text: 'hello\n', eol: 'lf', bom: false });
@@ -153,6 +175,34 @@ test('a save keeps the file mode', () => {
   assert.equal(fs.statSync(s.file).mode & 0o7777, 0o640);
   cleanup(s);
 });
+
+// A symlink inside the workspace that is pointed at the outside file right after it was first resolved.
+for (const action of ['read', 'write'] as const) {
+  test(`a symlink retargeted after it was checked is not followed on ${action}`, () => {
+    const s = setup();
+    const link = path.join(s.root, 'moving.txt');
+    fs.symlinkSync(s.file, link);
+    const original = fs.realpathSync;
+    let swapped = false;
+    (fs as unknown as Record<string, unknown>).realpathSync = (target: string, ...rest: unknown[]) => {
+      const result = (original as (...args: unknown[]) => string)(target, ...rest);
+      if (target === link && !swapped) {
+        swapped = true;
+        fs.unlinkSync(link);
+        fs.symlinkSync(s.outside, link);
+      }
+      return result;
+    };
+    try {
+      if (action === 'read') assert.equal(s.files.read('ws-1', link).text, 'hello\n');
+      else { try { s.files.write('ws-1', link, plain('changed')); } catch { /* refusing is fine too */ } }
+    } finally {
+      fs.realpathSync = original;
+    }
+    assert.equal(fs.readFileSync(s.outside, 'utf8'), 'secret');
+    cleanup(s);
+  });
+}
 
 test('a target swapped for a symlink out of the workspace is not written', () => {
   const hooks: NonNullable<EditorFilesOptions['hooks']> = {};
