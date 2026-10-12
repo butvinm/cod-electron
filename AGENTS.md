@@ -103,6 +103,8 @@ Role definitions live in `.claude/agents/`. The PM starts the developer as a Cla
 - Atomic commits: one logical change each, with a clear imperative subject (`Add workspace tab status dot`) and a body when the why is not obvious.
 - No AI attribution trailers (no `Co-Authored-By` for agents, no "Generated with" lines).
 - Branches: `story/<issue>-<slug>`, `tests/<issue>-<slug>`, `fix/<issue>-<slug>`. Never push to `master` directly; merge via PR.
+- PRs are squash-merged (the repo allows nothing else): one commit per PR on `master`, with the PR title as its subject and the PR body as its message, so write both as a good commit. Small commits on the branch are still welcome for review. The branch is deleted after the merge.
+- A story PR built on its tests branch carries the tests into `master`; close the tests PR with a comment "Merged as part of #<story PR>" instead of merging it.
 
 ## Public repo rules
 
