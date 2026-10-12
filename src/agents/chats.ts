@@ -7,9 +7,15 @@ function permissionKey(event: { tool: string; input: unknown }): string {
   return JSON.stringify([event.tool, event.input]);
 }
 
+// A process not yet gone. Known by its Claude session id once that is known.
+// Chats are replaced (New Claude Chat, opening a session) but this record lives until the process exits.
+interface Live {
+  id: string | null;
+  // Set when Cod ends the process on purpose. Resolves when it is gone.
+  ending: Promise<void> | null;
+}
+
 interface Chat {
-  // The shutdown of a process ended by Continue in Terminal, while it is under way.
-  closing?: Promise<void> | null;
   session: AgentSession | null;
   sessionId: string | null;
   cwd: string | null;
@@ -57,7 +63,9 @@ export class Chats {
   defaultFolder: NonNullable<ChatsOptions['defaultFolder']>;
   chats = new Map<string, Chat>();
   // Every session not yet gone, including interrupted ones.
-  live = new Set<AgentSession>();
+  // The registry of every process not yet gone. A process Cod is ending is waited for by anything
+  // that would start or hand off the same Claude session id, so one process writes to a session at a time.
+  live = new Map<AgentSession, Live>();
 
   constructor({ provider, folders, emit, home = os.homedir(), defaultMode = () => 'manual', defaultFolder = () => ({ folder: null, notice: null }) }: ChatsOptions) {
     this.defaultMode = defaultMode;
@@ -107,8 +115,24 @@ export class Chats {
     if (chat.cwd !== this._wanted(workspaceId)) {
       const session = chat.session;
       chat.session = null;
-      session.close();
+      this._end(session);
     }
+  }
+
+  // Ends a process on purpose. Resolves when it is gone.
+  _end(session: AgentSession): Promise<void> {
+    const live = this.live.get(session);
+    const done = Promise.resolve(session.close()).then(() => { this.live.delete(session); });
+    if (live) live.ending = done;
+    if (!session.alive) this.live.delete(session);
+    return done;
+  }
+
+  // Resolves when every process Cod is ending for this session id is gone. Null when there is none.
+  _gone(sessionId: string | null): Promise<void> | null {
+    if (!sessionId) return null;
+    const pending = [...this.live.values()].filter(live => live.id === sessionId && live.ending).map(live => live.ending!);
+    return pending.length ? Promise.all(pending).then(() => {}) : null;
   }
 
   // The first folder of a workspace may have changed.
@@ -118,15 +142,17 @@ export class Chats {
 
   send(workspaceId: string, text: string): void {
     const chat = this._chat(workspaceId);
-    // A process ended by Continue in Terminal must be gone before another one writes to the session.
-    if (chat.closing) {
-      chat.closing.then(() => { if (this.chats.get(workspaceId) === chat) this.send(workspaceId, text); });
+    this._settle(workspaceId);
+    // A process of this session that Cod is ending must be gone before another one writes to it.
+    const waiting = this._gone(chat.sessionId);
+    if (waiting) {
+      waiting.then(() => { if (this.chats.get(workspaceId) === chat) this.send(workspaceId, text); });
       return;
     }
-    this._settle(workspaceId);
     chat.busy = true;
     if (!chat.session || !chat.session.alive || chat.session.interrupting) {
       const cwd = this._wanted(workspaceId);
+      let live: Live | undefined;
       const session: AgentSession = this.provider.start({
         cwd,
         // A process that ended (after an interrupt, say) is replaced by one that resumes the same session.
@@ -138,6 +164,7 @@ export class Chats {
           // The interrupted marker of an older process still counts.
           if (chat.session !== session && event.type !== 'interrupted') return;
           if (event.type === 'session') chat.sessionId = event.id;
+          if (event.type === 'session' && live) live.id = event.id;
           // A mode the process reports itself. The label follows; nothing is sent back.
           if (event.type === 'mode') chat.mode = event.mode;
           const current = chat.session === session;
@@ -159,7 +186,8 @@ export class Chats {
       });
       chat.session = session;
       chat.cwd = cwd;
-      this.live.add(session);
+      live = { id: chat.sessionId, ending: null };
+      this.live.set(session, live);
     }
     chat.session.send(text);
   }
@@ -198,12 +226,10 @@ export class Chats {
     if (!chat || chat.busy || !chat.sessionId) return Promise.resolve(null);
     const command = resumeCommand(chat.cwd ?? this._wanted(workspaceId), chat.sessionId);
     const session = chat.session;
-    if (session) {
-      chat.session = null;
-      // Overlapping handoffs all wait for the same shutdown.
-      chat.closing = Promise.resolve(session.close()).then(() => { chat.closing = null; });
-    }
-    return Promise.resolve(chat.closing).then(() => command);
+    chat.session = null;
+    if (session) this._end(session);
+    // Any process of this session being ended, by this call or an earlier one, must be gone first.
+    return Promise.resolve(this._gone(chat.sessionId)).then(() => command);
   }
 
   interrupt(workspaceId: string): void {
@@ -217,14 +243,13 @@ export class Chats {
     this.chats.delete(workspaceId);
     if (!chat) return Promise.resolve();
     chat.discarded = true;
-    // A process ended by Continue in Terminal may still be shutting down: wait for it too.
-    if (!chat.session) return Promise.resolve(chat.closing ?? undefined);
+    if (!chat.session) return Promise.resolve();
     // Detach first, so late events of the old process never reach the new chat.
     const session = chat.session;
     chat.session = null;
     chat.busy = false;
     chat.asked.clear();
-    return Promise.all([session.close(), chat.closing]).then(() => {});
+    return this._end(session);
   }
 
   // The folders whose stored Claude sessions the workspace lists: its own, else the one the chat would run in.
@@ -247,14 +272,13 @@ export class Chats {
   forget(workspaceId: string): Promise<void> {
     const chat = this.chats.get(workspaceId);
     this.chats.delete(workspaceId);
-    if (!chat) return Promise.resolve();
-    return Promise.all([chat.session ? chat.session.close() : undefined, chat.closing]).then(() => {});
+    return chat && chat.session ? this._end(chat.session) : Promise.resolve();
   }
 
   // Stops every process, interrupted ones included. Resolves when they are all gone.
   closeAll(): Promise<void> {
     this.chats.clear();
-    return Promise.all([...this.live].map(session => session.close()))
+    return Promise.all([...this.live.keys()].map(session => session.close()))
       .then(() => (this.provider.close ? this.provider.close() : undefined));
   }
 }
