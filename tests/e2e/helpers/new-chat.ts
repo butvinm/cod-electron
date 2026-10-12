@@ -50,7 +50,7 @@ export const test = base.extend<{ run: Run }>({
       if (settings === 'missing-folder') writeFileSync(settingsFile, JSON.stringify({ default_chat_folder: missingFolder }));
       const env = Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined));
       for (const name of Object.keys(env)) {
-        if (/^(?:ANTHROPIC_.*(?:KEY|TOKEN|SECRET)|CLAUDE_.*(?:KEY|TOKEN|SECRET))$/i.test(name) || name.startsWith('COD_')) delete env[name];
+        if (/^(?:ANTHROPIC_.*(?:KEY|TOKEN|SECRET)|CLAUDE_.*(?:KEY|TOKEN|SECRET))$/i.test(name) || (name.startsWith('COD_') && name !== 'COD_TEST_QUIET' && name !== 'COD_TEST_VISIBLE')) delete env[name];
       }
       delete env.ELECTRON_RUN_AS_NODE;
       Object.assign(env, {
