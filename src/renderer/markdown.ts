@@ -4,6 +4,8 @@
 import { parser, GFM } from '@lezer/markdown';
 import { highlightRuns, languageName, decodeEntity, safeLink, joinCodeSegments, linkDestination } from './markdown-code.ts';
 
+import { findFileRefs, wholeFileRef, type FileRef } from './file-refs.ts';
+
 const gfm = parser.configure(GFM);
 type SyntaxNode = ReturnType<typeof gfm.parse>['topNode'];
 
@@ -228,6 +230,70 @@ function blockNode(src: string, node: SyntaxNode): Node[] {
       return MARKS.has(node.name) ? [] : text(src, node);
     }
   }
+}
+
+// File mentions in a drawn reply: plain text and inline code, but not code blocks and not existing links.
+function mentionSpots(root: ParentNode, visit: (spot: Text | HTMLElement) => void): void {
+  const walk = (parent: ParentNode): void => {
+    for (const child of [...parent.childNodes]) {
+      if (child instanceof Text) visit(child);
+      else if (child instanceof HTMLElement && !['A', 'PRE', 'INPUT'].includes(child.tagName)) {
+        if (child.tagName === 'CODE') visit(child); else walk(child);
+      }
+    }
+  };
+  walk(root);
+}
+
+// The paths of the mentions in a drawn reply, without duplicates.
+export function mentionPaths(root: ParentNode): string[] {
+  const found = new Set<string>();
+  mentionSpots(root, spot => {
+    const text = spot.textContent || '';
+    if (spot instanceof Text) findFileRefs(text).forEach(entry => found.add(entry.ref.path));
+    else {
+      const ref = wholeFileRef(text);
+      if (ref) found.add(ref.path);
+    }
+  });
+  return [...found];
+}
+
+// A focusable link to a file. The page opens it; the href is only there so that the browser treats it as a link.
+export function fileLink(file: string, ref: FileRef, ...kids: (Node | string)[]): HTMLAnchorElement {
+  const anchor = el('a', ...kids);
+  anchor.className = 'chat-file-link';
+  anchor.setAttribute('href', '#');
+  anchor.dataset.file = file;
+  if (ref.line !== undefined) anchor.dataset.line = String(ref.line);
+  if (ref.column !== undefined) anchor.dataset.column = String(ref.column);
+  return anchor;
+}
+
+// Turns the mentions whose path was found (path -> absolute file) into links. The rest stays text.
+export function linkMentions(root: ParentNode, resolved: Map<string, string | null>): void {
+  mentionSpots(root, spot => {
+    const text = spot.textContent || '';
+    if (spot instanceof Text) {
+      const pieces: Node[] = [];
+      let pos = 0;
+      for (const entry of findFileRefs(text)) {
+        const file = resolved.get(entry.ref.path);
+        if (!file) continue;
+        if (entry.from > pos) pieces.push(document.createTextNode(text.slice(pos, entry.from)));
+        pieces.push(fileLink(file, entry.ref, text.slice(entry.from, entry.to)));
+        pos = entry.to;
+      }
+      if (pieces.length === 0) return;
+      if (pos < text.length) pieces.push(document.createTextNode(text.slice(pos)));
+      spot.replaceWith(...pieces);
+    } else {
+      const ref = wholeFileRef(text);
+      const file = ref ? resolved.get(ref.path) : null;
+      if (!ref || !file) return;
+      spot.replaceWith(fileLink(file, ref, spot.cloneNode(true)));
+    }
+  });
 }
 
 // The nodes for a whole reply. The same text always gives the same nodes, which is what makes

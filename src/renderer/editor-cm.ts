@@ -151,6 +151,10 @@ export interface CodEditor {
   // The same for a buffer that is not shown.
   lockState(state: EditorState, locked: boolean): EditorState;
   getState(): EditorState;
+  // Puts the caret of the shown buffer at a 1-based line and column (clamped to the text) and scrolls to it.
+  select(line: number, column: number): void;
+  // The same state with its caret at that place, for a buffer that is not shown.
+  withCaret(state: EditorState, line: number, column: number): EditorState;
   focus(): void;
   hasFocus(): boolean;
 }
@@ -190,9 +194,17 @@ export function create({ parent, onChange, editFilter }: EditorOptions): CodEdit
     lockView(locked) { view.dispatch({ effects: lockEffect(locked) }); return view.state; },
     lockState(state, locked) { return withLocked(state, locked); },
     getState() { return view.state; },
+    select(line, column) { view.dispatch({ selection: { anchor: caretOffset(view.state, line, column) }, scrollIntoView: true }); },
+    withCaret(state, line, column) { return state.update({ selection: { anchor: caretOffset(state, line, column) } }).state; },
     focus() { view.focus(); },
     hasFocus() { return view.hasFocus; },
   };
+}
+
+// The offset of a 1-based line and column. A line past the end is the last line; a column past the end is the line end.
+export function caretOffset(state: EditorState, line: number, column: number): number {
+  const at = state.doc.line(Math.min(Math.max(Math.floor(line), 1), state.doc.lines));
+  return at.from + Math.min(Math.max(Math.floor(column), 1) - 1, at.length);
 }
 
 // The document text, with "\n" line breaks.

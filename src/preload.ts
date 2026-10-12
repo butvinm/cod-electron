@@ -105,6 +105,8 @@ const cod: CodApi = {
     mode: workspaceId => invoke('chat:mode', workspaceId),
     setMode: (workspaceId, mode) => invoke('chat:set-mode', workspaceId, mode),
     openLink: url => invoke('chat:open-link', url),
+    resolveFiles: (workspaceId, paths) => invoke('chat:resolve-files', workspaceId, paths),
+    toolFile: (workspaceId, input) => invoke('chat:tool-file', workspaceId, input),
     sessions: workspaceId => invoke('chat:sessions', workspaceId),
     openSession: (workspaceId, sessionId) => invoke('chat:open-session', workspaceId, sessionId),
     permission: (workspaceId, id, answer) => invoke('chat:permission', workspaceId, id, answer),
@@ -123,7 +125,7 @@ const cod: CodApi = {
     },
     forget: workspaceId => invoke('project:forget', workspaceId),
     readDir: dir => invoke('project:read-dir', dir),
-    openFile: (workspaceId, file) => invoke('project:open-file', workspaceId, file),
+    openFile: (workspaceId, file, line, column) => invoke('project:open-file', workspaceId, file, line, column),
     finderPrepare: workspaceId => invoke('finder:prepare', workspaceId),
     finderQuery: (workspaceId, text) => invoke('finder:query', workspaceId, text),
     onFinderRebuilt(callback) {

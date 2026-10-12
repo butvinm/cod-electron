@@ -2,8 +2,8 @@
 // draft and the focus survive the workbench redraws. Each event updates only the part it changes.
 // The Claude process lives in the main process; this file only draws events and sends keys.
 import type { CodApi } from '../shared/ipc.ts';
-import { createChat, reduce, toolTarget, toolInputText, statusOf, permissionText, queueHint, promptFocusTarget, type ChatItem, type ChatModelEvent, type PermissionRequest } from './chat-model.ts';
-import { renderMarkdown } from './markdown.ts';
+import { createChat, reduce, toolTarget, filePathOf, toolInputText, statusOf, permissionText, queueHint, promptFocusTarget, type ChatItem, type ChatModelEvent, type PermissionRequest } from './chat-model.ts';
+import { renderMarkdown, mentionPaths, linkMentions, fileLink } from './markdown.ts';
 import { createModeSelector } from './chat-mode.ts';
 import { nextPermissionMode, type PermissionMode, type SessionEvent } from '../shared/chat.ts';
 import { createQuestionForm, type QuestionForm } from './chat-question.ts';
@@ -27,6 +27,8 @@ export interface ChatOptions {
   chatApi: CodApi['chat'];
   // The header button asks the app to open the session picker.
   openHistory?: () => void;
+  // A file link in the chat asks the app to open the file, at a 1-based line and column when given.
+  openFile?: (file: string, at?: { line: number; column: number }) => void;
 }
 
 // A clock with a counter-clockwise arrow, like Zed's history icon.
@@ -57,7 +59,7 @@ export interface ChatView {
   composer: HTMLTextAreaElement;
 }
 
-export function create({ workspaceId, chatApi, openHistory = () => {} }: ChatOptions): ChatView {
+export function create({ workspaceId, chatApi, openHistory = () => {}, openFile = () => {} }: ChatOptions): ChatView {
   let state = createChat();
   const nodes = new Map<number, { item: ChatItem; element: HTMLElement }>(); // item key -> drawn item
   const expanded = new Set<number>();    // item keys of open tool blocks
@@ -110,28 +112,67 @@ export function create({ workspaceId, chatApi, openHistory = () => {} }: ChatOpt
     }).catch(console.error);
   }
 
-  function drawText(container: HTMLElement, text: string): void {
+  // Files named in a finished reply become links once the main process has confirmed they exist.
+  // A newer draw of the same reply makes an older answer void.
+  const draws = new WeakMap<HTMLElement, number>();
+  function drawText(container: HTMLElement, text: string, final: boolean): void {
     container.replaceChildren(...renderMarkdown(text));
+    const draw = (draws.get(container) || 0) + 1;
+    draws.set(container, draw);
+    const paths = final ? mentionPaths(container) : [];
+    if (paths.length === 0) return;
+    chatApi.resolveFiles(workspaceId, paths).then(found => {
+      if (draws.get(container) === draw) linkMentions(container, new Map(paths.map((path, index) => [path, found[index]])));
+    }).catch(console.error);
   }
 
-  // Links in replies go to the system browser. The window itself never navigates.
+  // Links in replies go to the system browser, and file links to the editor. The window itself never navigates.
   function openLink(event: Event): void {
     const anchor = event.target instanceof Element ? event.target.closest('a') : null;
     if (!anchor || !transcript.contains(anchor)) return;
     event.preventDefault();
+    if (anchor.classList.contains('chat-file-link')) {
+      const { file, line, column } = anchor.dataset;
+      if (file && event.type === 'click') openFile(file, line ? { line: Number(line), column: Number(column || 1) } : undefined);
+      return;
+    }
     const href = anchor.getAttribute('href');
     if (href && event.type === 'click') chatApi.openLink(href).catch(console.error);
   }
   transcript.addEventListener('click', openLink);
   transcript.addEventListener('auxclick', openLink);
 
+  // The file of a Read, Edit, MultiEdit or Write row. The link sits next to the summary button, not inside it,
+  // so the row still expands on its own. The main process finds the file (and the first changed line of an edit) on click.
+  function toolFileLink(item: ToolItem): HTMLAnchorElement | null {
+    const target = filePathOf(item);
+    if (target === null) return null;
+    const anchor = fileLink('', { path: target }, target);
+    anchor.classList.add('chat-tool-target');
+    delete anchor.dataset.file;
+    anchor.addEventListener('click', event => {
+      event.preventDefault();
+      chatApi.toolFile(workspaceId, item.input).then(found => {
+        if (found) openFile(found.file, found.line === null ? undefined : { line: found.line, column: 1 });
+      }).catch(console.error);
+    });
+    return anchor;
+  }
+
   function buildTool(item: ToolItem): HTMLElement {
-    const summary = node('button', { class: 'chat-tool-summary', type: 'button', 'aria-expanded': 'false' },
+    const summaryKids: (Node | string)[] = [
       node('span', { class: 'chat-tool-chevron', 'aria-hidden': 'true' }),
-      node('span', { class: 'chat-tool-name', text: item.name }), ' ',
-      node('span', { class: 'chat-tool-target', text: toolTarget(item.input) }));
+      node('span', { class: 'chat-tool-name', text: item.name })];
+    const link = toolFileLink(item);
+    // Ask now, while an edit may not have changed the file yet: the main process remembers the line it finds.
+    if (link && item.name !== 'Read' && item.name !== 'Write') chatApi.toolFile(workspaceId, item.input).catch(console.error);
+    // The link cannot sit inside the button, so a file row keeps the file in the button's name
+    // as hidden text, and the link draws it.
+    summaryKids.push(' ', node('span', { class: link ? 'chat-tool-target chat-tool-name-only' : 'chat-tool-target', text: toolTarget(item.input) }));
+    const summary = node('button', { class: 'chat-tool-summary', type: 'button', 'aria-expanded': 'false' }, ...summaryKids);
     const body = node('div', { class: 'chat-tool-body' });
-    const block = node('div', { class: 'chat-tool', testid: 'chat-tool-call' }, summary, body);
+    const head = link ? node('div', { class: 'chat-tool-head' }, summary, link) : summary;
+    const block = node('div', { class: 'chat-tool', testid: 'chat-tool-call' }, head, body);
     summary.addEventListener('click', () => {
       const entry = [...nodes.values()].find(candidate => candidate.element === block);
       if (!entry || entry.item.kind !== 'tool') return;
@@ -213,7 +254,7 @@ export function create({ workspaceId, chatApi, openHistory = () => {} }: ChatOpt
   function update(drawn: HTMLElement, item: ChatItem): void {
     if (item.kind === 'assistant') {
       drawn.setAttribute('data-state', item.state);
-      drawText(drawn, item.text);
+      drawText(drawn, item.text, item.state !== 'streaming');
     } else if (item.kind === 'tool') drawTool(drawn, item);
   }
 

@@ -77,7 +77,8 @@ export interface Editor {
   notify(message: string | null): void;
   // After a confirmed quit: every editor, including ones opened later, stays read-only until exit.
   freeze(): void;
-  open(workspaceId: string, file: string): Promise<void>;
+  // With `at` the caret goes to that 1-based line and column.
+  open(workspaceId: string, file: string, at?: { line: number; column: number }): Promise<void>;
   save(): Promise<void>;
   closeActive(): void;
   // Called on every redraw with the workspace being shown.
@@ -199,7 +200,7 @@ export function create({ roots, focusFallback }: EditorOptions): Editor {
     if (workspaceId === current) sync();
   }
 
-  async function open(workspaceId: string, file: string): Promise<void> {
+  async function open(workspaceId: string, file: string, at?: { line: number; column: number }): Promise<void> {
     const s = space(workspaceId);
     if (!s.buffers.has(file)) {
       const key = `${workspaceId}\0${file}`;
@@ -220,7 +221,11 @@ export function create({ roots, focusFallback }: EditorOptions): Editor {
     s.tabs = openTab(s.tabs, file);
     if (workspaceId === current) {
       sync();
+      if (at) view.select(at.line, at.column);
       view.focus();
+    } else if (at) {
+      const buffer = s.buffers.get(file);
+      if (buffer) buffer.state = view.withCaret(buffer.state, at.line, at.column);
     }
   }
 

@@ -49,22 +49,40 @@ export class Folders extends EventEmitter<{ change: [RootsChanged] }> {
   // True when target is a root of any workspace, or inside one.
   // Both sides go through realpath, so a symlink that leads out of a root does not count.
   // A path that does not exist is not contained.
+  // The path is checked against the roots as written before any file system call touches it,
+  // so a path outside every root is never probed.
   contains(target: unknown): boolean {
-    const real = realOrNull(target);
-    if (real === null) return false;
-    for (const roots of this.byWorkspace.values()) {
-      for (const root of roots) {
-        const realRoot = realOrNull(root);
-        if (realRoot !== null && isInside(realRoot, real)) return true;
-      }
-    }
-    return false;
+    return this.realInside(target) !== null;
   }
 
-  // True when target is inside a root of this workspace.
+  // The real path of target when it is inside a root, else null. The caller must use exactly this path
+  // afterwards and never resolve the supplied one again, so a symlink changed in between cannot lead out.
+  realInside(target: unknown): string | null {
+    if (typeof target !== 'string' || !path.isAbsolute(target)) return null;
+    const lexical = path.resolve(target);
+    const all = [...this.byWorkspace.values()].flat();
+    if (!all.some(root => isInside(root, lexical) || isInside(realOrNull(root) ?? root, lexical))) return null;
+    const real = realOrNull(lexical);
+    if (real === null) return null;
+    const inside = all.some(root => {
+      const realRoot = realOrNull(root);
+      return realRoot !== null && isInside(realRoot, real);
+    });
+    return inside ? real : null;
+  }
+
+  // Extra roots of a workspace besides its folders (the chat's own folder), set by the main process.
+  extraRoots: (workspaceId: string) => string[] = () => [];
+
+  // True when target is inside a root of this workspace, or inside the chat's folder.
   workspaceContains(workspaceId: string, target: unknown): boolean {
+    return this.workspaceRealPath(workspaceId, target) !== null;
+  }
+
+  // The validated real path of target in this workspace (see realInside), or null.
+  workspaceRealPath(workspaceId: string, target: unknown): string | null {
     const only = new Folders();
-    only.byWorkspace.set(workspaceId, this.list(workspaceId));
-    return only.contains(target);
+    only.byWorkspace.set(workspaceId, [...this.list(workspaceId), ...this.extraRoots(workspaceId)]);
+    return only.realInside(target);
   }
 }
