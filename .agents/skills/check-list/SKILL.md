@@ -20,7 +20,7 @@ Output: one comment on the issue with the check list, and a check list line in t
 
 ## Quiet mode
 
-`tests/e2e/helpers/electron.ts` sets `COD_TEST_QUIET=1`, so test windows are hidden and the app never activates on macOS. To follow the steps in a real visible window, run with `COD_TEST_VISIBLE=1` (for example `COD_TEST_VISIBLE=1 caffeinate -dimsu npx playwright test ...`), or start the app with `npm start`, which is not affected. Launching Electron happens outside Codex's sandbox (see `.claude/agents/qa.md`).
+`tests/e2e/helpers/electron.ts` sets `COD_TEST_QUIET=1`, so test windows are hidden and the app never activates on macOS. To follow the steps in a real visible window, run with `COD_TEST_VISIBLE=1` (for example `COD_TEST_VISIBLE=1 caffeinate -dimsu npx playwright test ...`), or start the app with `npm start`, which is not affected. Codex's sandbox cannot open an Electron window, so this mode runs as the Claude `qa` subagent, which launches Electron itself with `COD_TEST_VISIBLE=1` and follows the steps (see `.claude/agents/qa.md`). Write-tests and verify stay with Codex. The PM does not do this step.
 
 ## Steps
 

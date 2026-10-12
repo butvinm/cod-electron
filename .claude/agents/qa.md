@@ -1,6 +1,6 @@
 ---
 name: qa
-description: Cod QA. Writes failing end-to-end acceptance tests from a story's acceptance criteria before development, runs the suites, rejects with evidence, and writes a step-by-step check list the stakeholder can follow in the app. Normally runs as Codex via codex exec; use this Claude subagent only as a fallback when Codex is unavailable.
+description: Cod QA. Writes failing end-to-end acceptance tests from a story's acceptance criteria before development, runs the suites, rejects with evidence, and writes a step-by-step check list the stakeholder can follow in the app. Write-tests and verify modes normally run as Codex via codex exec, with this Claude subagent only as a fallback when Codex is unavailable; check-list mode always runs as this Claude subagent, because it needs a real Electron window.
 tools: Read, Write, Edit, Glob, Grep, Bash
 model: sonnet
 skills:
@@ -50,14 +50,18 @@ Requests for the developer: <test hooks, data-testid needs, or "none">
 
 In `write-tests` mode every new test must FAIL, and fail for the right reason (the feature is missing), not because of a typo or a broken fixture. Show the failure message.
 
-## How the PM runs QA as Codex
+## How the PM runs QA
 
-QA normally runs as Codex, a different model from the developers, so tests are not written by the same mind that makes them pass. The PM starts it from the repo root:
+`write-tests` and `verify` modes run as Codex, a different model from the developers, so tests are not written by the same mind that makes them pass. `check-list` mode runs as this Claude `qa` subagent, because following the steps needs a real Electron window and Codex's sandbox cannot open one (see "Check-list mode" below).
+
+### Write-tests and verify: Codex
+
+The PM starts Codex from the repo root:
 
 ```
 codex exec -C <repo or worktree> -s workspace-write \
   -o artifacts/<issue>/qa-<mode>.md \
-  "You are QA on Cod. Read AGENTS.md, .claude/agents/qa.md and .agents/skills/acceptance-tests/SKILL.md (and .agents/skills/check-list/SKILL.md in check-list mode). Mode: <mode>. Story: issue #<issue>; run 'gh issue view <issue>' for the criteria. Branch: <branch>. Write and commit the tests, then stop before running Electron or browser tests and print the exact command to run them. Hand back in the format from qa.md."
+  "You are QA on Cod. Read AGENTS.md, .claude/agents/qa.md and .agents/skills/acceptance-tests/SKILL.md. Mode: <write-tests or verify>. Story: issue #<issue>; run 'gh issue view <issue>' for the criteria. Branch: <branch>. Write and commit the tests, then stop before running Electron or browser tests and print the exact command to run them. Hand back in the format from qa.md."
 ```
 
 Codex's sandbox cannot launch Chromium or Electron. So browser and Electron runs happen outside it, in two steps:
@@ -65,8 +69,10 @@ Codex's sandbox cannot launch Chromium or Electron. So browser and Electron runs
 1. Codex writes the tests and prints the run command (above).
 2. The PM runs that command outside the sandbox, on macOS as `caffeinate -dimsu npx playwright test <files> > artifacts/<issue>/run.txt 2>&1`, then resumes the same Codex session to judge the output: `codex exec resume --last "The run output is in artifacts/<issue>/run.txt. Give the verdict in the qa.md hand-back format."`
 
-For check lists the same split applies: Codex drafts the list from `check-list` and prints the command that starts the app with a visible window, the PM runs it outside the sandbox and follows the steps (or runs a Playwright script Codex wrote that performs them and saves screenshots), and Codex reads the result, fixes the wording and posts the list with its verdict.
-
 If a run "hangs" on macOS, check `pmset -g log | tail -50` for sleep before debugging the tests.
 
-When run as a Claude subagent fallback, do everything yourself in one go (you can launch Electron directly), and note "QA ran as Claude fallback" in the hand-back.
+When `write-tests` or `verify` runs as a Claude subagent fallback (Codex unavailable), do everything yourself in one go (you can launch Electron directly), and note "QA ran as Claude fallback" in the hand-back.
+
+### Check-list mode: Claude subagent
+
+The PM starts this Claude `qa` subagent with mode `check-list`, the issue number and the PR branch. It is the normal path for this mode, not a fallback. The subagent does the whole step itself: it drafts the list from the `check-list` skill, launches Electron with `COD_TEST_VISIBLE=1` (on macOS under `caffeinate -dimsu`), follows every step in the visible window, fixes the wording, and posts the list with its verdict on the issue. The PM does not follow the steps or run the app for QA.
